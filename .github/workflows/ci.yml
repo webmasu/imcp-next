@@ -63,7 +63,7 @@ jobs:
                       HELPER_CODE_SIGNING_ALLOWED=NO \
                       build
 
-            - name: Test imsg connection
+            - name: Test host integrations
               run: python3 -m unittest discover -s Tests -p 'test_*.py'
 
             - name: Test

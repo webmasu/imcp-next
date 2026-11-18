@@ -4,7 +4,7 @@
   <img src="Assets/hero-light.svg" alt="iMCP">
 </picture>
 
-iMCP Next is a fork of [iMCP](https://github.com/mattt/iMCP) that connects its Messages tools to imsg on a macOS VM over SSH.
+iMCP Next is a fork of [iMCP](https://github.com/mattt/iMCP) that connects its Messages tools to imsg on this Mac or a macOS VM.
 It works with [Claude Desktop][claude-app],
 the [ChatGPT desktop app][chatgpt-app],
 local models served by [llama.cpp][llama-cpp],
@@ -61,7 +61,7 @@ and a [growing list of clients][mcp-clients] that support the
       <img src="Assets/messages.svg" width="48" height="48" alt="" role="presentation"/>
     </th>
     <td><strong>Messages</strong></td>
-    <td>List conversations, search messages, read history and optionally send texts through imsg in a VM.</td>
+    <td>List conversations, search messages, read history and optionally send texts through local or remote imsg.</td>
   </tr>
   <tr>
     <th width="48">
@@ -143,7 +143,7 @@ Scripts/install-imsg-connection.sh
 open .build/Build/Products/Release/iMCP.app
 ```
 
-You can copy the built app to `~/Applications/iMCP Next.app`. Use the copy's **Copy server command to clipboard** button when configuring a client. The fork has its own socket, client approvals and settings. For the VM connection, see [Messages via imsg](#messages-via-imsg).
+You can copy the built app to `~/Applications/iMCP Next.app`. Use the copy's **Copy server command to clipboard** button when configuring a client. The fork has its own socket, client approvals and settings. For connection options, see [Messages via imsg](#messages-via-imsg).
 
 <img align="right" width="344" src="/Assets/imcp-screenshot-first-launch.png" alt="Screenshot of the iMCP menu, with the Enable MCP Server switch at the top and a list of services below it" />
 
@@ -635,11 +635,12 @@ The app uses this package to handle proxied requests from MCP clients.
 
 ### Messages via imsg
 
-In **Settings > Messages**, select a connection, click **Test Connection**, then enable Messages. The test calls `status` and shows the imsg version and database and bridge readiness. Start the VM and sign in to Messages in the guest before testing.
+In **Settings > Messages**, select a connection, click **Test Connection**, then enable Messages. The test calls `status` and shows the imsg version and database and bridge readiness. Sign in to Messages on the selected Mac. For remote connections, start the guest before testing.
 
 | Connection | Host configuration |
 | --- | --- |
-| Lume SSH wrappers (default) | Install `~/.local/bin/imsg-ro` and `~/.local/bin/imsg-rw` on the host. Each wrapper must accept `rpc` on standard input/output. The wrappers handle the guest's current address and SSH authentication. Reads use `imsg-ro`. Only sending uses `imsg-rw`. |
+| imsg-vm (default) | Uses the host's `~/.local/bin/imsg-vm` launcher to find the guest and connect over SSH. Reads run `imsg-vm imsg-ro rpc`. Sending runs `imsg-vm imsg rpc`. |
+| Local imsg | Enter the absolute path to an imsg executable installed on this Mac. An empty field checks `/opt/homebrew/bin/imsg`, then `/usr/local/bin/imsg`. The executable runs `rpc` against this Mac's Messages database. Use imsg 0.21.1 for the full tool set documented below. |
 | SSH host | Enter a `Host` alias from the host Mac's `~/.ssh/config`. Configure its user, identity and known host key. iMCP uses noninteractive SSH and runs `/usr/local/bin/imsg rpc` in the guest. Test SSH access with `ssh -o BatchMode=yes -o IdentitiesOnly=yes -o StrictHostKeyChecking=yes YOUR_ALIAS /usr/local/bin/imsg --version`. |
 
 `Scripts/install-imsg-connection.sh` installs one executable in `~/Library/Application Scripts/io.webmasu.iMCP/`. The sandboxed app starts it on demand using `NSUserUnixTask`. It needs Python 3.8 or later at `/usr/bin/python3` on the host. There is no listener to start in the guest. Run the installer again after updating the script.
@@ -647,11 +648,17 @@ In **Settings > Messages**, select a connection, click **Test Connection**, then
 | MCP tool | imsg RPC | Use |
 | --- | --- | --- |
 | `messages_chats` | `chats.list` | Find a numeric chat ID. Optionally list only unread conversations. |
-| `messages_history` | `messages.history` | Read one chat. Optional filters cover participants and dates. Set `attachments` to include metadata and guest file paths. |
+| `messages_history` | `messages.history` | Read one chat. Optional filters cover participants and dates. Set `attachments` to include metadata and paths on the selected Mac. |
 | `messages_search` | `messages.search` | Search across conversations by text. |
 | `messages_send` | `send` | Send text to one recipient or existing chat. Enable **Send Text** separately under Messages. |
 
-Clients using upstream's `messages_fetch` should use the history and search tools above. Results follow the imsg JSON format. Attachment contents stay in the guest. A send that loses its SSH connection can have reached Messages. Check the chat history before retrying.
+Clients using upstream's `messages_fetch` should use the history and search tools above. Results follow the imsg JSON format. Attachment contents stay on the Mac running imsg. A send that loses its SSH connection can have reached Messages. Check the chat history before retrying.
+
+### BusyContacts
+
+To include BusyContacts on the host Mac, run `Scripts/install-busycontacts.sh` and enable **Settings > BusyContacts**. The read-only `busycontacts_list` tool accepts an optional name, phone number or email query. It returns the address book, name, phone numbers and emails for each card. Omit the query to list all cards. Pass `nextAfter` as `after` with the same query until the response returns `null`. Separately stored cards remain separate, even when two address books contain the same person.
+
+The helper opens `~/Library/Group Containers/N4RA379GBW.com.busymac.busycontacts/Data/BusyContacts.bsql` in SQLite read-only mode and includes committed changes in its write-ahead log. The reader was tested with BusyContacts 2026.4.4. A change to BusyMac's private schema may require an update to the reader. BusyContacts and Apple Contacts have separate service switches in iMCP.
 
 ### Call History Database Access
 

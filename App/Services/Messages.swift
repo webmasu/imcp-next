@@ -10,7 +10,7 @@ final class MessageService: Service {
     var tools: [Tool] {
         Tool(
             name: "messages_chats",
-            description: "List conversations on the imsg VM. Use a returned chat ID to read its history.",
+            description: "List conversations via imsg. Use a returned chat ID to read its history.",
             inputSchema: .object(
                 properties: [
                     "limit": limit,
@@ -23,7 +23,7 @@ final class MessageService: Service {
 
         Tool(
             name: "messages_history",
-            description: "Read messages in one VM conversation, newest first. Attachments are returned as metadata.",
+            description: "Read messages in one conversation, newest first. Attachments are returned as metadata.",
             inputSchema: .object(
                 properties: [
                     "chat_id": chatID, "limit": limit,
@@ -40,7 +40,7 @@ final class MessageService: Service {
 
         Tool(
             name: "messages_search",
-            description: "Search message text across conversations on the imsg VM.",
+            description: "Search message text across conversations via imsg.",
             inputSchema: .object(
                 properties: [
                     "query": .string(description: "Text to search for"),
@@ -55,7 +55,7 @@ final class MessageService: Service {
         Tool(
             name: "messages_send",
             description:
-                "Send one text through the VM. Supply either to or chat_id. Check history after an uncertain result before sending again.",
+                "Send one text via imsg. Supply either to or chat_id. Check history after an uncertain result before sending again.",
             inputSchema: .object(
                 properties: [
                     "to": .string(description: "Recipient phone number or email"),

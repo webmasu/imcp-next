@@ -5,6 +5,7 @@ from pathlib import Path
 import subprocess
 import sys
 import unittest
+import tempfile
 
 script = Path(__file__).resolve().parents[1] / "Scripts/imsg/imcp-imsg"
 loader = importlib.machinery.SourceFileLoader("imcp_imsg", str(script))
@@ -16,9 +17,20 @@ loader.exec_module(imsg)
 class ImsgConnectionTests(unittest.TestCase):
     def test_wrapper_routing(self):
         for method in imsg.METHODS:
-            argv = imsg.command("lume", "", method)
-            self.assertEqual(Path(argv[0]).name, "imsg-rw" if method == "send" else "imsg-ro")
-            self.assertEqual(argv[1:], ["rpc"])
+            for mode in ("imsg-vm", "lume"):
+                argv = imsg.command(mode, "", method)
+                self.assertEqual(Path(argv[0]).name, "imsg-vm")
+                self.assertEqual(argv[1:], ["imsg" if method == "send" else "imsg-ro", "rpc"])
+
+    def test_local_executable_is_used_for_reads_and_writes(self):
+        with tempfile.TemporaryDirectory(prefix="local imsg ") as directory:
+            binary = Path(directory) / "imsg"
+            binary.touch(mode=0o700)
+            for method in imsg.METHODS:
+                self.assertEqual(imsg.command("local", str(binary), method), [str(binary), "rpc"])
+            for path in ["relative/imsg", str(binary) + " missing"]:
+                with self.assertRaises(ValueError):
+                    imsg.command("local", path, "status")
 
     def test_ssh_uses_a_fixed_remote_command(self):
         self.assertEqual(imsg.command("ssh", "messages-vm", "send")[-3:],

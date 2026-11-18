@@ -1,0 +1,101 @@
+#!/usr/bin/python3
+"""List a page of contact cards from the BusyContacts 2026.4.4 store."""
+import contextlib
+import itertools
+import json
+from pathlib import Path
+import plistlib
+import sqlite3
+import sys
+import unicodedata
+
+
+DATABASE = Path.home() / "Library/Group Containers/N4RA379GBW.com.busymac.busycontacts/Data/BusyContacts.bsql"
+EMAIL, PHONE = 4, 18
+# BusyContacts stores names as attributed strings. Decode only their text.
+def title(blob):
+    if not blob:
+        return ""
+    try:
+        archive = plistlib.loads(blob)
+        objects = archive["$objects"]
+        root = objects[archive["$top"]["root"].data]
+        value = objects[root["NSString"].data] if isinstance(root, dict) else root
+        return value if isinstance(value, str) else ""
+    except (ValueError, TypeError, AttributeError, IndexError, KeyError, OverflowError, plistlib.InvalidFileException):
+        return ""
+
+
+def card(rows, books):
+    first = next(rows)
+    name = title(first["title"]) or first["indexed_name"] or " ".join(
+        part for part in (first["first"], first["middle"], first["last"]) if part)
+    contact = {"id": first["id"], "name": name, "addressBook": books.get(first["book"], ""),
+               "givenName": first["first"] or "", "familyName": first["last"] or "", "phones": [], "emails": []}
+    for row in itertools.chain([first], rows):
+        if row["value"]:
+            values = contact["emails"] if row["kind"] == EMAIL else contact["phones"]
+            if row["value"] not in values:
+                values.append(row["value"])
+    return contact
+
+
+def fold(text):
+    return unicodedata.normalize("NFC", text).casefold()
+
+
+def page(db, params):
+    if not isinstance(params, dict) or params.keys() - {"query", "after", "limit"}:
+        raise ValueError("Expected query, after or limit")
+    after, limit, query = params.get("after", 0), params.get("limit", 50), params.get("query", "")
+    if type(after) is not int or not 0 <= after < 2**63 or type(limit) is not int or not 1 <= limit <= 100:
+        raise ValueError("Use a nonnegative after cursor and a limit between 1 and 100")
+    if not isinstance(query, str):
+        raise ValueError("query must be text")
+    needle = fold(query.strip())
+    digits = "".join(c for c in needle if c.isdecimal())
+    number = digits if digits and all(c.isdecimal() or c in "+()- ./" for c in needle) else ""
+    db.row_factory = sqlite3.Row
+    entities = dict(db.execute("SELECT Z_NAME, Z_ENT FROM Z_PRIMARYKEY"))
+    if not {"Book", "Contact", "FieldData"} <= entities.keys():
+        raise ValueError("Unsupported BusyContacts database schema")
+    books = {r[0]: title(r[1]) for r in db.execute(
+        "SELECT Z_PK, ZTITLE FROM ZCOMMONDATA WHERE Z_ENT=?", (entities["Book"],))}
+    rows = db.execute("""
+        SELECT c.Z_PK AS id, c.ZFIRSTNAME AS first, c.ZMIDDLENAME AS middle, c.ZLASTNAME AS last,
+               c.ZTITLE AS title, c.ZLOCALTITLESEARCHTEXT AS indexed_name, c.ZPARENTCONTAINERDIRECT AS book,
+               f.ZFIELDTYPE AS kind, f.ZFIELDSTRING AS value
+        FROM ZCOMMONDATA c LEFT JOIN ZEXTRADATA f ON f.ZPARENTOBJECT=c.Z_PK
+             AND f.Z_ENT=? AND f.ZFIELDTYPE IN (?,?)
+        WHERE c.Z_ENT=? AND c.Z_PK>?
+        ORDER BY c.Z_PK, f.ZFIELDSORT, f.Z_PK
+        """, (entities["FieldData"], EMAIL, PHONE, entities["Contact"], after))
+    contacts = []
+    for _, group in itertools.groupby(rows, key=lambda row: row["id"]):
+        item = card(group, books)
+        fields = [item["name"], item["givenName"], item["familyName"], *item["emails"], *item["phones"]]
+        if needle and not any(needle in fold(value) for value in fields):
+            if not number or not any(number in "".join(c for c in phone if c.isdecimal()) for phone in item["phones"]):
+                continue
+        if len(contacts) == limit:
+            return {"contacts": contacts, "nextAfter": contacts[-1]["id"]}
+        contacts.append(item)
+    return {"contacts": contacts, "nextAfter": None}
+
+
+def read(database, params):
+    with contextlib.closing(sqlite3.connect(database.as_uri() + "?mode=ro", uri=True, timeout=2)) as db:
+        db.execute("PRAGMA query_only=ON")
+        db.execute("BEGIN")
+        return page(db, params)
+
+
+if __name__ == "__main__":
+    try:
+        line = sys.stdin.buffer.readline(65537)
+        if len(line) > 65536:
+            raise ValueError("Request exceeds 64 KiB")
+        response = {"result": read(DATABASE, json.loads(line))}
+    except (sqlite3.Error, ValueError, OSError) as exc:
+        response = {"error": {"message": f"Cannot read BusyContacts: {exc}"}}
+    print(json.dumps(response, ensure_ascii=False))

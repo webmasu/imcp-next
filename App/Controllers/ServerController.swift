@@ -50,6 +50,7 @@ struct ServiceConfig: Identifiable {
 enum ServiceRegistry {
     static let services: [any Service] = {
         var services: [any Service] = [
+            BusyContactsService.shared,
             CalendarService.shared,
             CaptureService.shared,
             ContactsService.shared,
@@ -76,6 +77,7 @@ enum ServiceRegistry {
     }()
 
     static func configureServices(
+        busyContactsEnabled: Binding<Bool>,
         calendarEnabled: Binding<Bool>,
         captureEnabled: Binding<Bool>,
         contactsEnabled: Binding<Bool>,
@@ -95,6 +97,14 @@ enum ServiceRegistry {
         weatherEnabled: Binding<Bool>
     ) -> [ServiceConfig] {
         var configs: [ServiceConfig] = [
+            ServiceConfig(
+                name: "BusyContacts",
+                summary: "Search names, phone numbers and emails in all local BusyContacts address books.",
+                iconName: "person.2",
+                color: .brown,
+                service: BusyContactsService.shared,
+                binding: busyContactsEnabled
+            ),
             ServiceConfig(
                 name: "Calendar",
                 summary: "View, create, update, and delete calendar events.",
@@ -153,7 +163,7 @@ enum ServiceRegistry {
             ),
             ServiceConfig(
                 name: "Messages",
-                summary: "Read conversations and optionally send texts through imsg on your VM.",
+                summary: "Read conversations and optionally send texts through local or remote imsg.",
                 iconName: "message.fill",
                 color: .green,
                 service: MessageService.shared,
@@ -250,6 +260,7 @@ final class ServerController: ObservableObject {
     private let networkManager = ServerNetworkManager()
 
     // MARK: - AppStorage for Service Enablement States
+    @AppStorage("busyContactsEnabled") private var busyContactsEnabled = false
     @AppStorage("calendarEnabled") private var calendarEnabled = false
     @AppStorage("captureEnabled") private var captureEnabled = false
     @AppStorage("contactsEnabled") private var contactsEnabled = false
@@ -281,6 +292,7 @@ final class ServerController: ObservableObject {
     // MARK: - Computed Properties for Service Configurations and Bindings
     var computedServiceConfigs: [ServiceConfig] {
         ServiceRegistry.configureServices(
+            busyContactsEnabled: $busyContactsEnabled,
             calendarEnabled: $calendarEnabled,
             captureEnabled: $captureEnabled,
             contactsEnabled: $contactsEnabled,
