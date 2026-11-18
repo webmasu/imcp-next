@@ -1,7 +1,10 @@
+import AppKit
 import JSONSchema
 
 final class BusyContactsService: Service {
     static let shared = BusyContactsService()
+    static let createToolName = "busycontacts_create"
+    static let createEnabledKey = "busyContactsCreateEnabled"
 
     var tools: [Tool] {
         Tool(
@@ -23,5 +26,62 @@ final class BusyContactsService: Service {
             ),
             annotations: .init(title: "Find BusyContacts Cards", readOnlyHint: true, openWorldHint: false)
         ) { try await LocalScript.call("imcp-busycontacts", request: .object($0)) }
+
+        Tool(
+            name: Self.createToolName,
+            description:
+                "Create one new card through BusyContacts Quick Entry. BusyContacts parses the details and manages saving and sync. Submission does not confirm a saved card. Check busycontacts_list before retrying.",
+            inputSchema: .object(
+                properties: [
+                    "details": .string(
+                        description: "Quick Entry text, for example a name followed by a phone number or email address"
+                    ),
+                    "addressBook": .string(description: "Optional address book name hint for BusyContacts"),
+                ],
+                required: ["details"],
+                additionalProperties: false
+            ),
+            annotations: .init(
+                title: "Create Contacts",
+                readOnlyHint: false,
+                destructiveHint: false,
+                idempotentHint: false,
+                openWorldHint: true
+            )
+        ) { arguments in
+            guard case let .string(rawDetails) = arguments["details"] else {
+                throw LocalScriptError(message: "Provide the contact details.")
+            }
+            var input = rawDetails.trimmingCharacters(in: .whitespacesAndNewlines)
+            guard !input.isEmpty else { throw LocalScriptError(message: "Provide the contact details.") }
+            if let book = arguments["addressBook"] {
+                guard case let .string(name) = book, !name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+                else {
+                    throw LocalScriptError(message: "Provide an address book name or omit addressBook.")
+                }
+                input += " /" + name.trimmingCharacters(in: .whitespacesAndNewlines)
+            }
+            return try await Self.createContact(input)
+        }
+    }
+
+    @MainActor
+    private static func createContact(_ input: String) async throws -> Value {
+        guard UserDefaults.standard.bool(forKey: createEnabledKey) else {
+            throw LocalScriptError(message: "Enable Create Contacts in Settings > BusyContacts.")
+        }
+        let unreserved = CharacterSet(
+            charactersIn: "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789-._~"
+        )
+        guard let encoded = input.addingPercentEncoding(withAllowedCharacters: unreserved),
+            let url = URL(string: "busycontacts://new/" + encoded)
+        else { throw LocalScriptError(message: "Could not encode the contact details.") }
+        guard let app = NSWorkspace.shared.urlForApplication(withBundleIdentifier: "com.busymac.busycontacts") else {
+            throw LocalScriptError(message: "BusyContacts is not installed on this Mac.")
+        }
+        let configuration = NSWorkspace.OpenConfiguration()
+        configuration.activates = false
+        _ = try await NSWorkspace.shared.open([url], withApplicationAt: app, configuration: configuration)
+        return .object(["status": .string("submitted")])
     }
 }

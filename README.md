@@ -640,7 +640,7 @@ In **Settings > Messages**, select a connection, click **Test Connection**, then
 | Connection | Host configuration |
 | --- | --- |
 | imsg-vm (default) | Uses the host's `~/.local/bin/imsg-vm` launcher to find the guest and connect over SSH. Reads run `imsg-vm imsg-ro rpc`. Sending runs `imsg-vm imsg rpc`. |
-| Local imsg | Enter the absolute path to an imsg executable installed on this Mac. An empty field checks `/opt/homebrew/bin/imsg`, then `/usr/local/bin/imsg`. The executable runs `rpc` against this Mac's Messages database. Use imsg 0.21.1 for the full tool set documented below. |
+| imsg | Enter the absolute path to an imsg executable installed on this Mac. An empty field checks `/opt/homebrew/bin/imsg`, then `/usr/local/bin/imsg`. The executable runs `rpc` against this Mac's Messages database. Use imsg 0.21.1 for the full tool set documented below. |
 | SSH host | Enter a `Host` alias from the host Mac's `~/.ssh/config`. Configure its user, identity and known host key. iMCP uses noninteractive SSH and runs `/usr/local/bin/imsg rpc` in the guest. Test SSH access with `ssh -o BatchMode=yes -o IdentitiesOnly=yes -o StrictHostKeyChecking=yes YOUR_ALIAS /usr/local/bin/imsg --version`. |
 
 `Scripts/install-imsg-connection.sh` installs one executable in `~/Library/Application Scripts/io.webmasu.iMCP/`. The sandboxed app starts it on demand using `NSUserUnixTask`. It needs Python 3.8 or later at `/usr/bin/python3` on the host. There is no listener to start in the guest. Run the installer again after updating the script.
@@ -657,6 +657,8 @@ Clients using upstream's `messages_fetch` should use the history and search tool
 ### BusyContacts
 
 To include BusyContacts on the host Mac, run `Scripts/install-busycontacts.sh` and enable **Settings > BusyContacts**. The read-only `busycontacts_list` tool accepts an optional name, phone number or email query. It returns the address book, name, phone numbers and emails for each card. Omit the query to list all cards. Pass `nextAfter` as `after` with the same query until the response returns `null`. Separately stored cards remain separate, even when two address books contain the same person.
+
+To allow MCP clients to create cards, turn on **Settings > BusyContacts > Create Contacts**. This switch is off by default. The `busycontacts_create` tool takes Quick Entry text in `details` and an optional `addressBook` name hint. It uses [BusyMac’s new-contact URL](https://www.busymac.com/docs/busycontacts/56235-url-handler/#creating-new-contacts-in-busycontacts) so BusyContacts handles the database write and account sync. A `submitted` result means macOS delivered the request. Use `busycontacts_list` to check for the card before retrying.
 
 The helper opens `~/Library/Group Containers/N4RA379GBW.com.busymac.busycontacts/Data/BusyContacts.bsql` in SQLite read-only mode and includes committed changes in its write-ahead log. The reader was tested with BusyContacts 2026.4.4. A change to BusyMac's private schema may require an update to the reader. BusyContacts and Apple Contacts have separate service switches in iMCP.
 

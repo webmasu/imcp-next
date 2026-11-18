@@ -59,7 +59,7 @@ def command(mode, target, method):
         for path in candidates:
             if path.is_absolute() and path.name == "imsg" and path.is_file() and os.access(path, os.X_OK):
                 return [str(path), "rpc"]
-        raise ValueError("Set the absolute path to the local imsg executable in Settings > Messages.")
+        raise ValueError("Set the absolute path to the imsg executable on this Mac in Settings > Messages.")
     host = target
     if mode != "ssh" or not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9._-]{0,252}", host):
         raise ValueError("Enter a Host alias from ~/.ssh/config")

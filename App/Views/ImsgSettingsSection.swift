@@ -11,7 +11,7 @@ struct ImsgSettingsSection: View {
         Section("imsg Connection") {
             Picker("Connect via", selection: $mode) {
                 Text("imsg-vm").tag(ImsgConnection.Mode.vm)
-                Text("Local imsg").tag(ImsgConnection.Mode.local)
+                Text("imsg").tag(ImsgConnection.Mode.local)
                 Text("SSH host").tag(ImsgConnection.Mode.ssh)
             }
             if mode == .ssh {
@@ -19,7 +19,7 @@ struct ImsgSettingsSection: View {
                 Text("Uses ~/.ssh/config on this Mac and /usr/local/bin/imsg in the guest.")
                     .font(.caption)
             } else if mode == .local {
-                TextField("Local imsg executable", text: $localPath, prompt: Text("/opt/homebrew/bin/imsg"))
+                TextField("imsg executable", text: $localPath, prompt: Text("/opt/homebrew/bin/imsg"))
                 Text("Leave blank to use the Homebrew binary on this Mac.").font(.caption)
             } else {
                 Text("Uses imsg-vm on this Mac to run imsg in the guest. Reads use its imsg-ro command.")
