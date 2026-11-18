@@ -63,6 +63,9 @@ jobs:
                       HELPER_CODE_SIGNING_ALLOWED=NO \
                       build
 
+            - name: Test imsg connection
+              run: python3 -m unittest discover -s Tests -p 'test_*.py'
+
             - name: Test
               run: |
                   xcodebuild -quiet \

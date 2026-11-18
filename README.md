@@ -4,7 +4,7 @@
   <img src="Assets/hero-light.svg" alt="iMCP">
 </picture>
 
-iMCP is a macOS app for connecting your digital life with AI.
+iMCP Next is a fork of [iMCP](https://github.com/mattt/iMCP) that connects its Messages tools to imsg on a macOS VM over SSH.
 It works with [Claude Desktop][claude-app],
 the [ChatGPT desktop app][chatgpt-app],
 local models served by [llama.cpp][llama-cpp],
@@ -61,7 +61,7 @@ and a [growing list of clients][mcp-clients] that support the
       <img src="Assets/messages.svg" width="48" height="48" alt="" role="presentation"/>
     </th>
     <td><strong>Messages</strong></td>
-    <td>Access message history with specific participants within customizable date ranges.</td>
+    <td>List conversations, search messages, read history and optionally send texts through imsg in a VM.</td>
   </tr>
   <tr>
     <th width="48">
@@ -133,17 +133,17 @@ Then follow the instructions for your AI app:
 - [ChatGPT desktop app](#connect-to-the-chatgpt-desktop-app)
 - [Claude Code, llama.cpp, and other clients](#connect-to-other-clients)
 
-### Download and open the app
+### Build and open iMCP Next
 
-First, [download the iMCP app](https://iMCP.app/download)
-(requires macOS 15.3 or later).
+With Xcode and an Apple Development signing identity installed, run these commands in the checkout. Replace `TEAM_ID` with your Apple developer team ID. Xcode uses automatic provisioning for the local build.
 
-Or, if you have [Homebrew](https://brew.sh) installed,
-you can run the following command:
-
-```console
-brew install --cask mattt/tap/iMCP
+```sh
+Scripts/build-local-app.sh TEAM_ID
+Scripts/install-imsg-connection.sh
+open .build/Build/Products/Release/iMCP.app
 ```
+
+You can copy the built app to `~/Applications/iMCP Next.app`. Use the copy's **Copy server command to clipboard** button when configuring a client. The fork has its own socket, client approvals and settings. For the VM connection, see [Messages via imsg](#messages-via-imsg).
 
 <img align="right" width="344" src="/Assets/imcp-screenshot-first-launch.png" alt="Screenshot of the iMCP menu, with the Enable MCP Server switch at the top and a list of services below it" />
 
@@ -599,14 +599,14 @@ iMCP is a macOS app that bundles a command-line executable, `imcp-server`.
 
 The app and CLI communicate over a Unix domain socket
 in the app's sandbox container, at
-`~/Library/Containers/co.dododo.iMCP/Data/Library/Caches/imcp.sock`.
+`~/Library/Containers/io.webmasu.iMCP/Data/Library/Caches/mcp.sock`.
 The CLI derives that path from the app's bundle identifier,
 so it needs no network access or service discovery.
 Before either side sends anything,
 it reads the other's audit token from the socket
 and checks the other's code signature.
-The CLI accepts only an app signed by team `TTY35UM57S`
-with the identifier `co.dododo.iMCP`,
+The CLI accepts only an app signed by its own Apple team
+with the identifier `io.webmasu.iMCP`,
 and the app accepts only a CLI signed by the same team
 with the identifier `imcp-server`.
 Requests from MCP clients are read by the CLI from `stdin`
@@ -620,9 +620,9 @@ Debug builds made with `CODE_SIGNING_ALLOWED=NO` are signed ad hoc,
 so they have no team to check and no App Sandbox entitlement.
 In Debug builds only,
 each side also accepts a peer that has the expected identifier
-(`imcp-server`, or `iMCP` or `co.dododo.iMCP` for the app),
+(`imcp-server`, or `iMCP` or `io.webmasu.iMCP` for the app),
 and an unsandboxed app listens at
-`~/Library/Caches/co.dododo.iMCP/imcp.sock`,
+`~/Library/Caches/io.webmasu.iMCP/mcp.sock`,
 which the Debug CLI tries after the container path.
 Any process can claim an identifier,
 so don't use Debug builds with your own data.
@@ -633,48 +633,25 @@ For this project, we created what became
 for Model Context Protocol servers and clients.
 The app uses this package to handle proxied requests from MCP clients.
 
-### iMessage Database Access
+### Messages via imsg
 
-Apple doesn't provide public APIs for accessing your messages.
-However, the Messages app on macOS stores data in a SQLite database located at
-`~/Library/Messages/chat.db`.
+In **Settings > Messages**, select a connection, click **Test Connection**, then enable Messages. The test calls `status` and shows the imsg version and database and bridge readiness. Start the VM and sign in to Messages in the guest before testing.
 
-iMCP runs in [App Sandbox][app-sandbox],
-which limits its access to user data and system resources.
-When you go to enable the Messages service,
-you'll be prompted to select your `~/Library/Messages` folder through the standard file picker.
-When you do, macOS adds that folder to the app's sandbox.
-[`NSOpenPanel`][nsopenpanel] is magic like that.
-The folder matters: `chat.db` is a WAL-mode database,
-and Messages writes every new message to `chat.db-wal` next to it first,
-only folding the log into `chat.db` at a checkpoint every few MB —
-often hours later.
-A grant on `chat.db` alone (what earlier versions asked for)
-leaves that log unreadable, so the newest messages were missing until then.
-If you granted `chat.db` with an earlier version, Messages keeps working from the last checkpoint;
-switch Messages off and on in the iMCP menu to grant the folder instead.
+| Connection | Host configuration |
+| --- | --- |
+| Lume SSH wrappers (default) | Install `~/.local/bin/imsg-ro` and `~/.local/bin/imsg-rw` on the host. Each wrapper must accept `rpc` on standard input/output. The wrappers handle the guest's current address and SSH authentication. Reads use `imsg-ro`. Only sending uses `imsg-rw`. |
+| SSH host | Enter a `Host` alias from the host Mac's `~/.ssh/config`. Configure its user, identity and known host key. iMCP uses noninteractive SSH and runs `/usr/local/bin/imsg rpc` in the guest. Test SSH access with `ssh -o BatchMode=yes -o IdentitiesOnly=yes -o StrictHostKeyChecking=yes YOUR_ALIAS /usr/local/bin/imsg --version`. |
 
-Attachment files are a separate matter.
-The sandbox walls off `~/Library/Messages/Attachments` from a grant on its parent folder,
-so reading message attachments (`messages_attachment_read`)
-asks for that subfolder through the same picker —
-a second, read-only grant of its own.
-Granting it is optional:
-declining leaves `messages_attachment_read` unable to read files,
-while everything else keeps working.
-If you granted the Messages folder before attachments were supported,
-switch Messages off and on in the iMCP menu to be asked for it.
+`Scripts/install-imsg-connection.sh` installs one executable in `~/Library/Application Scripts/io.webmasu.iMCP/`. The sandboxed app starts it on demand using `NSUserUnixTask`. It needs Python 3.8 or later at `/usr/bin/python3` on the host. There is no listener to start in the guest. Run the installer again after updating the script.
 
-But opening the iMessage database is just half the battle.
-Over the past few years,
-Apple has moved away from storing messages in plain text
-and instead toward a proprietary `typedstream` format.
+| MCP tool | imsg RPC | Use |
+| --- | --- | --- |
+| `messages_chats` | `chats.list` | Find a numeric chat ID. Optionally list only unread conversations. |
+| `messages_history` | `messages.history` | Read one chat. Optional filters cover participants and dates. Set `attachments` to include metadata and guest file paths. |
+| `messages_search` | `messages.search` | Search across conversations by text. |
+| `messages_send` | `send` | Send text to one recipient or existing chat. Enable **Send Text** separately under Messages. |
 
-For this project, we created [Madrid][madrid]:
-a Swift package for reading your iMessage database.
-It includes a Swift implementation for decoding Apple's `typedstream` format,
-adapted from Christopher Sardegna's [imessage-exporter] project
-and [blog post about reverse-engineering `typedstream`][typedstream-blog-post].
+Clients using upstream's `messages_fetch` should use the history and search tools above. Results follow the imsg JSON format. Attachment contents stay in the guest. A send that loses its SSH connection can have reached Messages. Check the chat history before retrying.
 
 ### Call History Database Access
 
@@ -803,9 +780,9 @@ such as `7KQ2-M9XD`, and numbered steps:
 click Copy Code,
 click Open iMCP… to open iMCP's Pair with iMCP Helper window,
 then paste the code and click Pair.
-The button opens the URL `imcp://pair`, which carries no data;
+The button opens the URL `imcp-next://pair`, which carries no data;
 iMCP only opens its pairing window for it.
-The helper opens that URL only with the app that has iMCP's bundle ID, `co.dododo.iMCP`,
+The helper opens that URL only with the app that has iMCP's bundle ID, `io.webmasu.iMCP`,
 preferring the running copy, and not with a copy that doesn't declare the `imcp` scheme;
 otherwise, for example if you built iMCP with another bundle ID,
 the helper tells you to choose Pair… in Settings > Home instead.
@@ -823,8 +800,7 @@ The window also reports startup and permission errors.
 The Mac's iCloud account must have access to the home,
 and writes can require the owner or administrator role.
 
-Sparkle updates iMCP but not the helper.
-After an iMCP update,
+When updating the fork from source,
 rebuild the helper from the tag that matches the new version:
 
 ```console

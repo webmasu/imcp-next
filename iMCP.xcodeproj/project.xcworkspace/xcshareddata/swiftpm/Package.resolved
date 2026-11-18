@@ -1,5 +1,5 @@
 {
-  "originHash" : "450ac4d8543f84390d057b51a87a83fcb32680354677e9c533e5baec6743b22b",
+  "originHash" : "419daee4d40fa9f4795d7b77a95168540c8a66f0d8c523aa89a827ab1121f1bd",
   "pins" : [
     {
       "identity" : "envelope",
@@ -29,30 +29,12 @@
       }
     },
     {
-      "identity" : "madrid",
-      "kind" : "remoteSourceControl",
-      "location" : "https://github.com/mattt/Madrid",
-      "state" : {
-        "revision" : "11ec80cb67700e47948f90cef6de38bce4dbfb12",
-        "version" : "0.5.0"
-      }
-    },
-    {
       "identity" : "ontology",
       "kind" : "remoteSourceControl",
       "location" : "https://github.com/mattt/Ontology",
       "state" : {
         "revision" : "7e3937c46057ec9afcfb347da2241033d311bd34",
         "version" : "0.11.0"
-      }
-    },
-    {
-      "identity" : "sparkle",
-      "kind" : "remoteSourceControl",
-      "location" : "https://github.com/sparkle-project/Sparkle",
-      "state" : {
-        "revision" : "ac2def288cbff5cfc7df3ffef6abdf45b72bcb0a",
-        "version" : "2.9.6"
       }
     },
     {

@@ -7,7 +7,6 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
-		158948D22D0E610E83A4433C /* Sparkle in Frameworks */ = {isa = PBXBuildFile; productRef = B75D49165A453E912E36DBFE /* Sparkle */; };
 		76F80A6E3EDBFB02048A6ED8 /* Cocoa.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = E0E66768348853754D32208C /* Cocoa.framework */; };
 		826C0834A5B647F8A918E54D /* ServiceLifecycle in Frameworks */ = {isa = PBXBuildFile; productRef = DCE061F8A68D0CD546D919E2 /* ServiceLifecycle */; };
 		8DFCE9E4CBCBEB93A32E8560 /* ServiceLifecycleTestKit in Frameworks */ = {isa = PBXBuildFile; productRef = 1CD6B9E157EEC273F178543D /* ServiceLifecycleTestKit */; };
@@ -58,8 +57,6 @@
 		B0D1DEADBEEF00000000000C /* MCPInitializeCompatibilityTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = B0D1DEADBEEF00000000000B /* MCPInitializeCompatibilityTests.swift */; };
 		C0A7E00000000000000000A2 /* ../../App/Controllers/ConnectionApprovalGate.swift in Sources */ = {isa = PBXBuildFile; fileRef = C0A7E00000000000000000A1 /* ../../App/Controllers/ConnectionApprovalGate.swift */; };
 		C0A7E00000000000000000B2 /* ConnectionApprovalGateTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = C0A7E00000000000000000B1 /* ConnectionApprovalGateTests.swift */; };
-		F809556E2D7888920055B911 /* TypedStream in Frameworks */ = {isa = PBXBuildFile; productRef = F809556D2D7888920055B911 /* TypedStream */; };
-		F80955702D7888920055B911 /* iMessage in Frameworks */ = {isa = PBXBuildFile; productRef = F809556F2D7888920055B911 /* iMessage */; };
 		C0FFEE0000000000000000A1 /* TopoText in Frameworks */ = {isa = PBXBuildFile; productRef = C0FFEE0000000000000000A2 /* TopoText */; };
 		F825BDBF2D9AD00E0063ADD7 /* ServiceLifecycle in Frameworks */ = {isa = PBXBuildFile; productRef = F825BDBE2D9AD00E0063ADD7 /* ServiceLifecycle */; };
 		F825BDC12D9AD00E0063ADD7 /* UnixSignals in Frameworks */ = {isa = PBXBuildFile; productRef = F825BDC02D9AD00E0063ADD7 /* UnixSignals */; };
@@ -222,16 +219,13 @@
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
-				F809556E2D7888920055B911 /* TypedStream in Frameworks */,
 				AA0011000000000000000001 /* Envelope in Frameworks */,
 				AB0055000000000000000001 /* TSRP in Frameworks */,
-				158948D22D0E610E83A4433C /* Sparkle in Frameworks */,
 				F873F48D2D712BCF0035CD0A /* Ontology in Frameworks */,
 				F8D7C31A2DCBD32100A4775F /* MCP in Frameworks */,
 				F8A7DE3E2DCB76F700530587 /* MCP in Frameworks */,
 				F8F1D2F82D6F9E0C00F6323D /* MCP in Frameworks */,
 				F8D7C3172DCBD30500A4775F /* MCP in Frameworks */,
-				F80955702D7888920055B911 /* iMessage in Frameworks */,
 				C0FFEE0000000000000000A1 /* TopoText in Frameworks */,
 				F8D8C48E2DCE0E6800369E5C /* JSONSchema in Frameworks */,
 			);
@@ -421,16 +415,13 @@
 			packageProductDependencies = (
 				F8F44E9C2D5903F70075D79C /* MCP */,
 				F873F48C2D712BCF0035CD0A /* Ontology */,
-				F809556D2D7888920055B911 /* TypedStream */,
 				AA0011000000000000000002 /* Envelope */,
 				AB0055000000000000000002 /* TSRP */,
-				F809556F2D7888920055B911 /* iMessage */,
 				C0FFEE0000000000000000A2 /* TopoText */,
 				F8A7DE3D2DCB76F700530587 /* MCP */,
 				F8D7C3162DCBD30500A4775F /* MCP */,
 				F8D7C3192DCBD32100A4775F /* MCP */,
 				F8D8C48D2DCE0E6800369E5C /* JSONSchema */,
-				B75D49165A453E912E36DBFE /* Sparkle */,
 			);
 			productName = iMCP;
 			productReference = F8F44E6D2D59038D0075D79C /* iMCP.app */;
@@ -508,12 +499,10 @@
 				AA0011000000000000000003 /* XCRemoteSwiftPackageReference "Envelope" */,
 				F88358352D64A085000317CD /* XCRemoteSwiftPackageReference "swift-log" */,
 				F873F48B2D712BCF0035CD0A /* XCRemoteSwiftPackageReference "Ontology" */,
-				F809556C2D7888920055B911 /* XCRemoteSwiftPackageReference "Madrid" */,
 				C0FFEE0000000000000000A3 /* XCRemoteSwiftPackageReference "TopoText" */,
 				F825BDBD2D9AD00E0063ADD7 /* XCRemoteSwiftPackageReference "swift-service-lifecycle" */,
 				F8D7C3182DCBD32100A4775F /* XCRemoteSwiftPackageReference "swift-sdk" */,
 				F8D8C48C2DCE0E6800369E5C /* XCRemoteSwiftPackageReference "JSONSchema" */,
-				26120478122FBFCB2B073DE5 /* XCRemoteSwiftPackageReference "Sparkle" */,
 			);
 			preferredProjectObjectVersion = 77;
 			productRefGroup = F8F44E6E2D59038D0075D79C /* Products */;
@@ -905,7 +894,7 @@
 				GENERATE_INFOPLIST_FILE = YES;
 				HELPER_CODE_SIGNING_ALLOWED = YES;
 				INFOPLIST_FILE = App/Info.plist;
-				INFOPLIST_KEY_CFBundleDisplayName = iMCP;
+				INFOPLIST_KEY_CFBundleDisplayName = "iMCP Next";
 				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.developer-tools";
 				INFOPLIST_KEY_LSUIElement = YES;
 				INFOPLIST_KEY_NSCalendarsFullAccessUsageDescription = "iMCP needs access to provide event information to the MCP server.";
@@ -932,7 +921,7 @@
 				"LD_RUNPATH_SEARCH_PATHS[sdk=macosx*]" = "@executable_path/../Frameworks";
 				MACOSX_DEPLOYMENT_TARGET = 15.1;
 				MARKETING_VERSION = 1.8.4;
-				PRODUCT_BUNDLE_IDENTIFIER = co.dododo.iMCP;
+				PRODUCT_BUNDLE_IDENTIFIER = io.webmasu.iMCP;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				PROVISIONING_PROFILE_SPECIFIER = "";
 				SDKROOT = auto;
@@ -976,7 +965,7 @@
 				GENERATE_INFOPLIST_FILE = YES;
 				HELPER_CODE_SIGNING_ALLOWED = YES;
 				INFOPLIST_FILE = App/Info.plist;
-				INFOPLIST_KEY_CFBundleDisplayName = iMCP;
+				INFOPLIST_KEY_CFBundleDisplayName = "iMCP Next";
 				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.developer-tools";
 				INFOPLIST_KEY_LSUIElement = YES;
 				INFOPLIST_KEY_NSCalendarsFullAccessUsageDescription = "iMCP needs access to provide event information to the MCP server.";
@@ -1003,7 +992,7 @@
 				"LD_RUNPATH_SEARCH_PATHS[sdk=macosx*]" = "@executable_path/../Frameworks";
 				MACOSX_DEPLOYMENT_TARGET = 15.1;
 				MARKETING_VERSION = 1.8.4;
-				PRODUCT_BUNDLE_IDENTIFIER = co.dododo.iMCP;
+				PRODUCT_BUNDLE_IDENTIFIER = io.webmasu.iMCP;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				PROVISIONING_PROFILE_SPECIFIER = "";
 				SDKROOT = auto;
@@ -1109,22 +1098,6 @@
 				minimumVersion = 0.5.0;
 			};
 		};
-		26120478122FBFCB2B073DE5 /* XCRemoteSwiftPackageReference "Sparkle" */ = {
-			isa = XCRemoteSwiftPackageReference;
-			repositoryURL = "https://github.com/sparkle-project/Sparkle";
-			requirement = {
-				kind = upToNextMajorVersion;
-				minimumVersion = 2.6.0;
-			};
-		};
-		F809556C2D7888920055B911 /* XCRemoteSwiftPackageReference "Madrid" */ = {
-			isa = XCRemoteSwiftPackageReference;
-			repositoryURL = "https://github.com/mattt/Madrid";
-			requirement = {
-				kind = upToNextMajorVersion;
-				minimumVersion = 0.5.0;
-			};
-		};
 		C0FFEE0000000000000000A3 /* XCRemoteSwiftPackageReference "TopoText" */ = {
 			isa = XCRemoteSwiftPackageReference;
 			repositoryURL = "https://github.com/mattt/TopoText";
@@ -1214,25 +1187,10 @@
 			package = F88358352D64A085000317CD /* XCRemoteSwiftPackageReference "swift-log" */;
 			productName = Logging;
 		};
-		B75D49165A453E912E36DBFE /* Sparkle */ = {
-			isa = XCSwiftPackageProductDependency;
-			package = 26120478122FBFCB2B073DE5 /* XCRemoteSwiftPackageReference "Sparkle" */;
-			productName = Sparkle;
-		};
 		DCE061F8A68D0CD546D919E2 /* ServiceLifecycle */ = {
 			isa = XCSwiftPackageProductDependency;
 			package = F825BDBD2D9AD00E0063ADD7 /* XCRemoteSwiftPackageReference "swift-service-lifecycle" */;
 			productName = ServiceLifecycle;
-		};
-		F809556D2D7888920055B911 /* TypedStream */ = {
-			isa = XCSwiftPackageProductDependency;
-			package = F809556C2D7888920055B911 /* XCRemoteSwiftPackageReference "Madrid" */;
-			productName = TypedStream;
-		};
-		F809556F2D7888920055B911 /* iMessage */ = {
-			isa = XCSwiftPackageProductDependency;
-			package = F809556C2D7888920055B911 /* XCRemoteSwiftPackageReference "Madrid" */;
-			productName = iMessage;
 		};
 		C0FFEE0000000000000000A2 /* TopoText */ = {
 			isa = XCSwiftPackageProductDependency;

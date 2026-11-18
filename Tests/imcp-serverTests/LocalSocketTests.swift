@@ -26,7 +26,7 @@ final class LocalSocketTests: XCTestCase {
     func testContainerPathIsInAppContainerCaches() {
         XCTAssertEqual(
             LocalSocket.containerPath(homeDirectory: "/Users/someone"),
-            "/Users/someone/Library/Containers/co.dododo.iMCP/Data/Library/Caches/imcp.sock"
+            "/Users/someone/Library/Containers/io.webmasu.iMCP/Data/Library/Caches/mcp.sock"
         )
     }
 
@@ -41,7 +41,7 @@ final class LocalSocketTests: XCTestCase {
     func testUnsandboxedDebugServerPathIsAClientPath() {
         let home = "/Users/someone"
         let path = LocalSocket.serverPath(isSandboxed: false, homeDirectory: home)
-        XCTAssertEqual(path, "/Users/someone/Library/Caches/co.dododo.iMCP/imcp.sock")
+        XCTAssertEqual(path, "/Users/someone/Library/Caches/io.webmasu.iMCP/mcp.sock")
         XCTAssertTrue(LocalSocket.clientPaths(homeDirectory: home).contains(path))
     }
 
@@ -63,11 +63,11 @@ final class LocalSocketTests: XCTestCase {
     func testReleaseRequirementsPinTeamAndIdentifier() {
         XCTAssertEqual(
             CodeRequirement.releaseClient,
-            #"anchor apple generic and identifier "imcp-server" and certificate leaf[subject.OU] = "TTY35UM57S""#
+            #"anchor apple generic and identifier "imcp-server" and certificate leaf[subject.OU] = "\#(CodeRequirement.teamIdentifier)""#
         )
         XCTAssertEqual(
             CodeRequirement.releaseServer,
-            #"anchor apple generic and identifier "co.dododo.iMCP" and certificate leaf[subject.OU] = "TTY35UM57S""#
+            #"anchor apple generic and identifier "io.webmasu.iMCP" and certificate leaf[subject.OU] = "\#(CodeRequirement.teamIdentifier)""#
         )
     }
 
@@ -78,7 +78,7 @@ final class LocalSocketTests: XCTestCase {
         )
         XCTAssertEqual(
             CodeRequirement.debugServer,
-            #"(\#(CodeRequirement.releaseServer)) or identifier "co.dododo.iMCP" or identifier "iMCP""#
+            #"(\#(CodeRequirement.releaseServer)) or identifier "io.webmasu.iMCP" or identifier "iMCP""#
         )
         XCTAssertEqual(CodeRequirement.client, CodeRequirement.debugClient)
         XCTAssertEqual(CodeRequirement.server, CodeRequirement.debugServer)

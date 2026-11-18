@@ -1,4 +1,3 @@
-import Sparkle
 import SwiftUI
 
 @main
@@ -8,18 +7,6 @@ struct App: SwiftUI.App {
     @StateObject private var serverController = ServerController()
     @AppStorage("isEnabled") private var isEnabled = true
     @AppStorage("showMenuBarExtra") private var showMenuBarExtra = true
-
-    // `startingUpdater: true` makes this the sole owner of update checking
-    // for the app's lifetime.
-    // Without it (or without ever constructing an updater at all),
-    // the SUFeedURL / SUPublicEDKey keys in Info.plist are inert
-    // and installs never learn about newer releases,
-    // no matter how long they run.
-    private let updaterController = SPUStandardUpdaterController(
-        startingUpdater: true,
-        updaterDelegate: nil,
-        userDriverDelegate: nil
-    )
 
     var body: some Scene {
         @Bindable var appDelegate = appDelegate
@@ -32,8 +19,7 @@ struct App: SwiftUI.App {
         ) {
             ContentView(
                 serverManager: serverController,
-                isEnabled: $isEnabled,
-                updater: updaterController.updater
+                isEnabled: $isEnabled
             )
         }
         .menuBarExtraStyle(.window)
@@ -80,7 +66,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     func application(_ application: NSApplication, open urls: [URL]) {
-        // iMCP Helper's Open iMCP button opens imcp://pair, which only opens the pairing window.
+        // iMCP Helper's Open iMCP button opens imcp-next://pair, which only opens the pairing window.
         guard urls.contains(where: HomeHelperPairing.isPairingURL) else { return }
         Task { await HomeService.shared.pairFromURL() }
     }

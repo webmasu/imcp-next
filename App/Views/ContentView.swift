@@ -1,5 +1,4 @@
 import AppKit
-import Sparkle
 import SwiftUI
 
 struct ContentView: View {
@@ -8,7 +7,6 @@ struct ContentView: View {
     @Environment(\.openSettings) private var openSettings
 
     private let aboutWindowController: AboutWindowController
-    private let updater: SPUUpdater
     @State private var menuPanel = MenuPanelController()
 
     private var serviceConfigs: [ServiceConfig] {
@@ -17,13 +15,11 @@ struct ContentView: View {
 
     init(
         serverManager: ServerController,
-        isEnabled: Binding<Bool>,
-        updater: SPUUpdater
+        isEnabled: Binding<Bool>
     ) {
         self.serverController = serverManager
         self._isEnabled = isEnabled
         self.aboutWindowController = AboutWindowController()
-        self.updater = updater
     }
 
     var body: some View {
@@ -99,11 +95,6 @@ struct ContentView: View {
                     NSApp.activate(ignoringOtherApps: true)
                     openSettings()
                 }
-
-                MenuButton("Check for Updates...") {
-                    updater.checkForUpdates()
-                }
-                .disabled(!updater.canCheckForUpdates)
 
                 MenuButton("About iMCP") {
                     aboutWindowController.showWindow(nil)

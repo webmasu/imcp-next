@@ -74,7 +74,7 @@ final class HomeHelperPairingTests: XCTestCase {
     }
 
     func testRecognizesOnlyThePairingURLAndIgnoresItsOtherParts() throws {
-        for text in ["imcp://pair", "IMCP://PAIR", "imcp://pair/extra?code=0123-ABCD#fragment"] {
+        for text in ["imcp-next://pair", "IMCP-NEXT://PAIR", "imcp-next://pair/extra?code=0123-ABCD#fragment"] {
             XCTAssertTrue(HomeHelperPairing.isPairingURL(try XCTUnwrap(URL(string: text))), text)
         }
         for text in ["imcp://settings", "https://pair", "imcp:pair", "imcp://", "pair://imcp"] {

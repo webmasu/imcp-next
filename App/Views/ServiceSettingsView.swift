@@ -29,6 +29,10 @@ struct ServiceSettingsView: View {
                 }
             }
 
+            if config.service is MessageService {
+                ImsgSettingsSection()
+            }
+
             if config.service is HomeService {
                 HomeHelperSection(isHomeOn: isOn)
             }

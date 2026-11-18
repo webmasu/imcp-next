@@ -153,7 +153,7 @@ enum ServiceRegistry {
             ),
             ServiceConfig(
                 name: "Messages",
-                summary: "Read your message history with specific people, including attachments.",
+                summary: "Read conversations and optionally send texts through imsg on your VM.",
                 iconName: "message.fill",
                 color: .green,
                 service: MessageService.shared,
@@ -381,12 +381,17 @@ final class ServerController: ObservableObject {
     }
 
     // MARK: - Disabled Tools Management
+    @AppStorage("imsgSendEnabled") private var imsgSendEnabled = false
+
     var disabledTools: Set<String> {
         get {
-            (try? JSONDecoder().decode(Set<String>.self, from: disabledToolsData)) ?? []
+            var tools = (try? JSONDecoder().decode(Set<String>.self, from: disabledToolsData)) ?? []
+            if !imsgSendEnabled { tools.insert("messages_send") }
+            return tools
         }
         set {
             objectWillChange.send()
+            imsgSendEnabled = !newValue.contains("messages_send")
             disabledToolsData = (try? JSONEncoder().encode(newValue)) ?? Data()
             disabledToolsGeneration += 1
             let generation = disabledToolsGeneration

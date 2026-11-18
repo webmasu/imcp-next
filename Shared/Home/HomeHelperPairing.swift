@@ -31,10 +31,10 @@ enum HomeHelperPairing {
     static let serviceType = "_imcp-helper._tcp"
 
     /// iMCP's bundle identifier, which the helper uses to find iMCP and open its pairing window.
-    static let appBundleIdentifier = "co.dododo.iMCP"
+    static let appBundleIdentifier = "io.webmasu.iMCP"
     /// The URL that opens iMCP's pairing window.
     /// It carries no data: iMCP reads only its scheme and host.
-    static let appPairingURL = URL(string: "imcp://pair")!
+    static let appPairingURL = URL(string: "imcp-next://pair")!
 
     /// Whether `url` asks iMCP to open its pairing window.
     /// Ignores every other part of the URL, so a link can't pass a code or any other data.

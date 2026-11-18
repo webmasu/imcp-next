@@ -13,10 +13,10 @@ import Security
 /// which let any local process advertise a service or accept a session.
 enum LocalSocket {
     /// The iMCP app's bundle identifier, which names its sandbox container.
-    static let appBundleIdentifier = "co.dododo.iMCP"
+    static let appBundleIdentifier = "io.webmasu.iMCP"
 
     /// The name of the socket file in the app's caches directory.
-    static let fileName = "imcp.sock"
+    static let fileName = "mcp.sock"
 
     /// The largest path that fits in `sockaddr_un.sun_path`, excluding the terminating NUL.
     static let maximumPathLength = MemoryLayout.size(ofValue: sockaddr_un().sun_path) - 1
@@ -599,7 +599,19 @@ struct LocalSocketHello: Codable, Equatable {
 /// anyone can sign a binary with the identifier `imcp-server`.
 enum CodeRequirement {
     /// The team that signs iMCP and `imcp-server`.
-    static let teamIdentifier = "TTY35UM57S"
+    static let teamIdentifier: String = {
+        var code: SecCode?
+        var staticCode: SecStaticCode?
+        var information: CFDictionary?
+        guard SecCodeCopySelf([], &code) == errSecSuccess, let code,
+            SecCodeCopyStaticCode(code, [], &staticCode) == errSecSuccess, let staticCode,
+            SecCodeCopySigningInformation(staticCode, SecCSFlags(rawValue: kSecCSSigningInformation), &information)
+                == errSecSuccess,
+            let team = (information as? [CFString: Any])?[kSecCodeInfoTeamIdentifier] as? String,
+            team.range(of: "^[A-Z0-9]{10}$", options: .regularExpression) != nil
+        else { return "UNSIGNED_BUILD" }
+        return team
+    }()
 
     /// The signing identifier of `imcp-server`.
     ///

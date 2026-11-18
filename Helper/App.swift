@@ -378,7 +378,7 @@ final class HelperRuntime: ObservableObject {
                 )
             }
         }
-        Self.log.info("Opening imcp://pair with \(application.path, privacy: .private).")
+        Self.log.info("Opening imcp-next://pair with \(application.path, privacy: .private).")
         typealias Open = @convention(c) (NSObject, Selector, NSArray, NSURL, NSObject, AnyObject?) -> Void
         unsafeBitCast(workspace.method(for: open), to: Open.self)(
             workspace,
@@ -463,7 +463,7 @@ final class HelperRuntime: ObservableObject {
         let path = installed.resolvingSymlinksInPath().path
         let handles = handlers.contains { $0.resolvingSymlinksInPath().path == path }
         log.info(
-            "Can't read that iMCP's Info.plist; LaunchServices \(handles ? "lists" : "doesn't list", privacy: .public) it for imcp://pair."
+            "Can't read that iMCP's Info.plist; LaunchServices \(handles ? "lists" : "doesn't list", privacy: .public) it for imcp-next://pair."
         )
         return handles ? installed : nil
     }
