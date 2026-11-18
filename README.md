@@ -656,11 +656,21 @@ Clients using upstream's `messages_fetch` should use the history and search tool
 
 ### BusyContacts
 
-To include BusyContacts on the host Mac, run `Scripts/install-busycontacts.sh` and enable **Settings > BusyContacts**. The read-only `busycontacts_list` tool accepts an optional name, phone number or email query. It returns the address book, name, phone numbers and emails for each card. Omit the query to list all cards. Pass `nextAfter` as `after` with the same query until the response returns `null`. Separately stored cards remain separate, even when two address books contain the same person.
+Run `Scripts/install-busycontacts.sh` on the host Mac, then turn on **Settings > BusyContacts** in iMCP Next. The **Create Contacts** and **Update Contacts** switches are independent and both default to off.
 
-To allow MCP clients to create cards, turn on **Settings > BusyContacts > Create Contacts**. This switch is off by default. The `busycontacts_create` tool takes Quick Entry text in `details` and an optional `addressBook` name hint. It uses [BusyMac’s new-contact URL](https://www.busymac.com/docs/busycontacts/56235-url-handler/#creating-new-contacts-in-busycontacts) so BusyContacts handles the database write and account sync. A `submitted` result means macOS delivered the request. Use `busycontacts_list` to check for the card before retrying.
+| Tool | Use |
+| --- | --- |
+| `busycontacts_list` | Search all BusyContacts address books by name, email or phone. Omit the query to list everyone. Pass `nextAfter` as `after` with the same query to read the next page. |
+| `busycontacts_get` | Read a person by numeric BusyContacts `id`. Returns a vCard, `hasPhoto`, a revision and the original BusyContacts field list in `busyContactsFields`, including custom labels and provider values. Set `includePhoto` to `false` to omit the image from the response. |
+| `busycontacts_photo` | Read the contact photo as an MCP image. Uses the BusyContacts cached original when available, with the macOS account photo as a fallback. |
+| `busycontacts_create` | Supply `details` and an optional `addressBook` for Quick Entry, or supply a complete `vcard`. For a vCard, BusyContacts opens its import dialog so you can choose the address book and confirm. A submitted request can be checked with `busycontacts_list`. |
+| `busycontacts_update` | Supply `id`, the `revision` from `busycontacts_get`, and the desired changes. The tool saves through the macOS Contacts framework to the exact account card. |
 
-The helper opens `~/Library/Group Containers/N4RA379GBW.com.busymac.busycontacts/Data/BusyContacts.bsql` in SQLite read-only mode and includes committed changes in its write-ahead log. The reader was tested with BusyContacts 2026.4.4. A change to BusyMac's private schema may require an update to the reader. BusyContacts and Apple Contacts have separate service switches in iMCP.
+To edit a phone number, read the card, edit its `TEL` entry and pass the edited vCard with `fields: ["phoneNumbers"]`. Include every phone number you want to keep. To replace only the photo, send `photoBase64` with the ID and revision. To remove it, send `removePhoto: true`. Images can be up to 5 MiB and 40 megapixels. Exports use vCard 3.0 with an embedded photo. BusyContacts notes are exported as plain text. Existing notes, tags and provider-specific vCard properties are read-only in the update tool. macOS requires a separately approved entitlement to edit existing contact notes. [Apple’s contact notes entitlement](https://developer.apple.com/documentation/bundleresources/entitlements/com.apple.developer.contacts.notes)
+
+Full cards, photos and edits require Contacts access for iMCP Next and an address book that both apps sync through the same account. The helper matches the account collection, card UID and resource name. It opens the BusyContacts and macOS SQLite stores read-only and checks the cached server revisions before saving. A changed revision or pending sync stops the edit. Read the card again after sync and review the intended fields. Groups and local-only BusyContacts books remain available through the list tool. These readers were checked with BusyContacts 2026.4.4 and depend on the local database schemas.
+
+A `savedLocally` result confirms that macOS accepted the edit. iCloud or Google then syncs it to BusyContacts. Another device can still edit the same field before that sync completes. [BusyMac’s guide to syncing with Apple Contacts](https://www.busymac.com/docs/busycontacts/49374-syncing-with-apple-contacts/) · [Apple’s save semantics](https://developer.apple.com/documentation/contacts/cnsaverequest)
 
 ### Call History Database Access
 

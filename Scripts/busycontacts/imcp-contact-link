@@ -1,0 +1,79 @@
+#!/usr/bin/python3
+"""Resolve a BusyContacts card to exactly one account-specific macOS contact, read-only."""
+import contextlib
+import hashlib
+import json
+import plistlib
+from pathlib import Path
+import sqlite3
+import sys
+from urllib.parse import unquote
+
+sys.dont_write_bytecode = True
+from card_details import cached_photo, supplemental
+
+HOME = Path.home() / "Library"
+BUSY = HOME / "Group Containers/N4RA379GBW.com.busymac.busycontacts/Data/BusyContacts.bsql"
+SOURCES = HOME / "Application Support/AddressBook/Sources"
+
+
+@contextlib.contextmanager
+def snapshot(path):
+    with contextlib.closing(sqlite3.connect(path.as_uri() + "?mode=ro", uri=True, timeout=2)) as db:
+        db.row_factory = sqlite3.Row
+        db.execute("PRAGMA query_only=ON")
+        db.execute("BEGIN")
+        yield db
+
+
+def resolve(card_id, busy_path=BUSY, sources=SOURCES, include_photo=False):
+    if type(card_id) is not int or not 0 < card_id < 2**63:
+        raise ValueError("Use a numeric ID from busycontacts_list")
+    with snapshot(busy_path) as db:
+        item = db.execute("""
+            SELECT s.ZUID uid, s.Z_OPT objectVersion, c.Z_OPT cardVersion,
+                   r.ZEDITURL tag, r.ZREMOTEID filename, br.ZREMOTEID collection,
+                   s.ZPENDINGSYNC pending, bs.ZPENDINGSYNC bookPending, svc.ZSERVICEENABLED active
+            FROM ZCOMMONDATA c JOIN Z_PRIMARYKEY e ON e.Z_ENT=c.Z_ENT AND e.Z_NAME='Contact'
+            JOIN ZSYNCABLEOBJECT s ON s.Z_PK=c.ZOBJECTINFO
+            JOIN ZREMOTEOBJECT r ON r.Z_PK=s.ZREMOTEOBJECT
+            JOIN ZCOMMONDATA b ON b.Z_PK=c.ZPARENTCONTAINERDIRECT
+            JOIN ZSYNCABLEOBJECT bs ON bs.Z_PK=b.ZOBJECTINFO
+            JOIN ZREMOTEOBJECT br ON br.Z_PK=bs.ZREMOTEOBJECT
+            JOIN ZCOMMONSERVICE svc ON svc.Z_PK=r.ZTHEREMOTESERVICE AND svc.Z_PK=br.ZTHEREMOTESERVICE
+            WHERE c.Z_PK=?""", (card_id,)).fetchone()
+        if not item or not all(item[k] for k in ("uid", "tag", "filename", "collection", "active")):
+            raise ValueError("This card has no active shared account or server revision")
+        if item["pending"] or item["bookPending"]:
+            raise ValueError("BusyContacts has pending changes. Wait for sync and read the card again.")
+        matches = []
+        for path in sources.glob("*/AddressBook-v*.abcddb"):
+            with snapshot(path) as apple:
+                for row in apple.execute("""
+                    SELECT ZUNIQUEID id, ZEXTERNALCOLLECTIONPATH collection, ZEXTERNALFILENAME filename,
+                           ZEXTERNALMODIFICATIONTAG tag, Z_OPT version, ZSYNCSTATUS syncStatus
+                    FROM ZABCDRECORD WHERE ZEXTERNALUUID=? COLLATE NOCASE
+                    """, (item["uid"],)):
+                    if unquote(row["collection"] or "") == unquote(item["collection"]):
+                        matches.append(dict(row))
+        if len(matches) != 1 or not (matches[0]["id"] or "").endswith(":ABPerson"):
+            raise ValueError("No unique person in the same macOS address book (groups and local-only cards are unsupported)")
+        person = matches[0]
+        if person["syncStatus"] != 1:
+            raise ValueError("The macOS card is not in its synced state. Wait for sync, then read it again.")
+        if person["filename"] != item["filename"] or not person["tag"] or person["tag"] != item["tag"]:
+            raise ValueError("The two address books report different server revisions. Wait for sync, then read again.")
+        details = supplemental(db, card_id)
+        photo, photo_state = cached_photo(db, card_id, busy_path.parent / "Attachments", include_photo)
+        state = [card_id, dict(item), person, details, photo_state]
+        token = hashlib.sha256(json.dumps(state, sort_keys=True).encode()).hexdigest()
+        return {"identifier": person["id"], "uid": item["uid"], "revision": token, **details, **photo}
+
+
+if __name__ == "__main__":
+    try:
+        request = json.loads(sys.stdin.buffer.readline(1024))
+        response = {"result": resolve(request["id"], include_photo=request.get("includePhoto") is True)}
+    except (KeyError, TypeError, ValueError, OSError, sqlite3.Error, IndexError, plistlib.InvalidFileException) as exc:
+        response = {"error": {"message": str(exc)}}
+    print(json.dumps(response))

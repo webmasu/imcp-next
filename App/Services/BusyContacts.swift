@@ -6,6 +6,9 @@ final class BusyContactsService: Service {
     static let createToolName = "busycontacts_create"
     static let createEnabledKey = "busyContactsCreateEnabled"
 
+    static let updateToolName = "busycontacts_update"
+    static let updateEnabledKey = "busyContactsUpdateEnabled"
+
     var tools: [Tool] {
         Tool(
             name: "busycontacts_list",
@@ -27,18 +30,22 @@ final class BusyContactsService: Service {
             annotations: .init(title: "Find BusyContacts Cards", readOnlyHint: true, openWorldHint: false)
         ) { try await LocalScript.call("imcp-busycontacts", request: .object($0)) }
 
+        BusyContactTools.get
+        BusyContactTools.photo
+        BusyContactTools.update
+
         Tool(
             name: Self.createToolName,
             description:
-                "Create one new card through BusyContacts Quick Entry. BusyContacts parses the details and manages saving and sync. Submission does not confirm a saved card. Check busycontacts_list before retrying.",
+                "Create a new BusyContacts card. Supply Quick Entry details and an optional addressBook, or one full vcard with an optional embedded photo. vCard import opens BusyContacts for the user to choose the destination and confirm. Check busycontacts_list before retrying.",
             inputSchema: .object(
                 properties: [
                     "details": .string(
                         description: "Quick Entry text, for example a name followed by a phone number or email address"
                     ),
+                    "vcard": .string(description: "One complete vCard to import in BusyContacts"),
                     "addressBook": .string(description: "Optional address book name hint for BusyContacts"),
                 ],
-                required: ["details"],
                 additionalProperties: false
             ),
             annotations: .init(
@@ -49,6 +56,12 @@ final class BusyContactsService: Service {
                 openWorldHint: true
             )
         ) { arguments in
+            if let card = arguments["vcard"] {
+                guard arguments["details"] == nil, arguments["addressBook"] == nil else {
+                    throw LocalScriptError(message: "Use vcard alone, or details with an optional addressBook.")
+                }
+                return try await BusyContactImport.open(card)
+            }
             guard case let .string(rawDetails) = arguments["details"] else {
                 throw LocalScriptError(message: "Provide the contact details.")
             }

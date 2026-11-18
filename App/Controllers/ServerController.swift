@@ -99,7 +99,7 @@ enum ServiceRegistry {
         var configs: [ServiceConfig] = [
             ServiceConfig(
                 name: "BusyContacts",
-                summary: "Search BusyContacts address books and optionally create contact cards.",
+                summary: "Read BusyContacts cards and photos, and choose whether to allow creating or updating contacts.",
                 iconName: "person.2",
                 color: .brown,
                 service: BusyContactsService.shared,
@@ -397,17 +397,21 @@ final class ServerController: ObservableObject {
 
     @AppStorage(BusyContactsService.createEnabledKey) private var busyContactsCreateEnabled = false
 
+    @AppStorage(BusyContactsService.updateEnabledKey) private var busyContactsUpdateEnabled = false
+
     var disabledTools: Set<String> {
         get {
             var tools = (try? JSONDecoder().decode(Set<String>.self, from: disabledToolsData)) ?? []
             if !imsgSendEnabled { tools.insert("messages_send") }
             if !busyContactsCreateEnabled { tools.insert(BusyContactsService.createToolName) }
+            if !busyContactsUpdateEnabled { tools.insert(BusyContactsService.updateToolName) }
             return tools
         }
         set {
             objectWillChange.send()
             imsgSendEnabled = !newValue.contains("messages_send")
             busyContactsCreateEnabled = !newValue.contains(BusyContactsService.createToolName)
+            busyContactsUpdateEnabled = !newValue.contains(BusyContactsService.updateToolName)
             disabledToolsData = (try? JSONEncoder().encode(newValue)) ?? Data()
             disabledToolsGeneration += 1
             let generation = disabledToolsGeneration
