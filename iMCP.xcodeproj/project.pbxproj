@@ -38,7 +38,19 @@
 		A40000000000000000000023 /* ../../Shared/Extensions/Bundle+Extensions.swift in Sources */ = {isa = PBXBuildFile; fileRef = A40000000000000000000013 /* ../../Shared/Extensions/Bundle+Extensions.swift */; };
 		A40000000000000000000024 /* ../../Shared/Models/Service.swift in Sources */ = {isa = PBXBuildFile; fileRef = A40000000000000000000014 /* ../../Shared/Models/Service.swift */; };
 		A50000000000000000000020 /* MailTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A50000000000000000000010 /* MailTests.swift */; };
+		BC00000000000000000000B2 /* RecurrenceTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = BC00000000000000000000B1 /* RecurrenceTests.swift */; };
+		BC0000000000000000000072 /* WeatherHistoryTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = BC0000000000000000000071 /* WeatherHistoryTests.swift */; };
 		A50000000000000000000021 /* ../../App/Services/Mail.swift in Sources */ = {isa = PBXBuildFile; fileRef = A50000000000000000000011 /* ../../App/Services/Mail.swift */; };
+		BC00000000000000000000A2 /* ../../App/Extensions/EventKit+Extensions.swift in Sources */ = {isa = PBXBuildFile; fileRef = BC00000000000000000000A1 /* ../../App/Extensions/EventKit+Extensions.swift */; };
+		BC00000000000000000000C2 /* ../../App/Extensions/AppKit+Extensions.swift in Sources */ = {isa = PBXBuildFile; fileRef = BC00000000000000000000C1 /* ../../App/Extensions/AppKit+Extensions.swift */; };
+		BC0000000000000000000092 /* ../../App/Services/Reminders.swift in Sources */ = {isa = PBXBuildFile; fileRef = BC0000000000000000000091 /* ../../App/Services/Reminders.swift */; };
+		BC0000000000000000000082 /* ../../App/Services/OutgoingMail.swift in Sources */ = {isa = PBXBuildFile; fileRef = BC0000000000000000000081 /* ../../App/Services/OutgoingMail.swift */; };
+		BC0000000000000000000062 /* ../../App/Services/WeatherHistory.swift in Sources */ = {isa = PBXBuildFile; fileRef = BC0000000000000000000061 /* ../../App/Services/WeatherHistory.swift */; };
+		BC0000000000000000000052 /* ../../App/Services/Weather.swift in Sources */ = {isa = PBXBuildFile; fileRef = BC0000000000000000000051 /* ../../App/Services/Weather.swift */; };
+		BC0000000000000000000042 /* ../../App/Services/MailSchedule.swift in Sources */ = {isa = PBXBuildFile; fileRef = BC0000000000000000000041 /* ../../App/Services/MailSchedule.swift */; };
+		BC0000000000000000000032 /* ../../App/Services/MailActions.swift in Sources */ = {isa = PBXBuildFile; fileRef = BC0000000000000000000031 /* ../../App/Services/MailActions.swift */; };
+		BC0000000000000000000022 /* ../../App/Services/ReadOnlyIndex.swift in Sources */ = {isa = PBXBuildFile; fileRef = BC0000000000000000000021 /* ../../App/Services/ReadOnlyIndex.swift */; };
+		BC0000000000000000000012 /* ../../App/Services/ToolInput.swift in Sources */ = {isa = PBXBuildFile; fileRef = BC0000000000000000000011 /* ../../App/Services/ToolInput.swift */; };
 		A50000000000000000000022 /* ../../App/Extensions/Foundation+Extensions.swift in Sources */ = {isa = PBXBuildFile; fileRef = A50000000000000000000012 /* ../../App/Extensions/Foundation+Extensions.swift */; };
 		A50000000000000000000030 /* Envelope in Frameworks */ = {isa = PBXBuildFile; productRef = A50000000000000000000040 /* Envelope */; };
 		B0D1DEADBEEF000000000002 /* BonjourDiscovery.swift in Sources */ = {isa = PBXBuildFile; fileRef = B0D1DEADBEEF000000000001 /* BonjourDiscovery.swift */; };
@@ -120,7 +132,19 @@
 		A40000000000000000000013 /* ../../Shared/Extensions/Bundle+Extensions.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "../../Shared/Extensions/Bundle+Extensions.swift"; sourceTree = "<group>"; };
 		A40000000000000000000014 /* ../../Shared/Models/Service.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ../../Shared/Models/Service.swift; sourceTree = "<group>"; };
 		A50000000000000000000010 /* MailTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MailTests.swift; sourceTree = "<group>"; };
+		BC00000000000000000000B1 /* RecurrenceTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RecurrenceTests.swift; sourceTree = "<group>"; };
+		BC0000000000000000000071 /* WeatherHistoryTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WeatherHistoryTests.swift; sourceTree = "<group>"; };
 		A50000000000000000000011 /* ../../App/Services/Mail.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ../../App/Services/Mail.swift; sourceTree = "<group>"; };
+		BC00000000000000000000A1 /* ../../App/Extensions/EventKit+Extensions.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "../../App/Extensions/EventKit+Extensions.swift"; sourceTree = "<group>"; };
+		BC00000000000000000000C1 /* ../../App/Extensions/AppKit+Extensions.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "../../App/Extensions/AppKit+Extensions.swift"; sourceTree = "<group>"; };
+		BC0000000000000000000091 /* ../../App/Services/Reminders.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ../../App/Services/Reminders.swift; sourceTree = "<group>"; };
+		BC0000000000000000000081 /* ../../App/Services/OutgoingMail.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ../../App/Services/OutgoingMail.swift; sourceTree = "<group>"; };
+		BC0000000000000000000061 /* ../../App/Services/WeatherHistory.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ../../App/Services/WeatherHistory.swift; sourceTree = "<group>"; };
+		BC0000000000000000000051 /* ../../App/Services/Weather.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ../../App/Services/Weather.swift; sourceTree = "<group>"; };
+		BC0000000000000000000041 /* ../../App/Services/MailSchedule.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ../../App/Services/MailSchedule.swift; sourceTree = "<group>"; };
+		BC0000000000000000000031 /* ../../App/Services/MailActions.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ../../App/Services/MailActions.swift; sourceTree = "<group>"; };
+		BC0000000000000000000021 /* ../../App/Services/ReadOnlyIndex.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ../../App/Services/ReadOnlyIndex.swift; sourceTree = "<group>"; };
+		BC0000000000000000000011 /* ../../App/Services/ToolInput.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ../../App/Services/ToolInput.swift; sourceTree = "<group>"; };
 		A50000000000000000000012 /* ../../App/Extensions/Foundation+Extensions.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "../../App/Extensions/Foundation+Extensions.swift"; sourceTree = "<group>"; };
 		B0D1DEADBEEF000000000001 /* BonjourDiscovery.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = BonjourDiscovery.swift; path = ../../CLI/BonjourDiscovery.swift; sourceTree = "<group>"; };
 		5EC5A1E70000000000000001 /* LocalSocket.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = LocalSocket.swift; path = ../../CLI/LocalSocket.swift; sourceTree = "<group>"; };
@@ -265,7 +289,19 @@
 				A40000000000000000000013 /* ../../Shared/Extensions/Bundle+Extensions.swift */,
 				A40000000000000000000014 /* ../../Shared/Models/Service.swift */,
 				A50000000000000000000010 /* MailTests.swift */,
+				BC00000000000000000000B1 /* RecurrenceTests.swift */,
+				BC0000000000000000000071 /* WeatherHistoryTests.swift */,
 				A50000000000000000000011 /* ../../App/Services/Mail.swift */,
+				BC00000000000000000000A1 /* ../../App/Extensions/EventKit+Extensions.swift */,
+				BC00000000000000000000C1 /* ../../App/Extensions/AppKit+Extensions.swift */,
+				BC0000000000000000000091 /* ../../App/Services/Reminders.swift */,
+				BC0000000000000000000081 /* ../../App/Services/OutgoingMail.swift */,
+				BC0000000000000000000061 /* ../../App/Services/WeatherHistory.swift */,
+				BC0000000000000000000051 /* ../../App/Services/Weather.swift */,
+				BC0000000000000000000041 /* ../../App/Services/MailSchedule.swift */,
+				BC0000000000000000000031 /* ../../App/Services/MailActions.swift */,
+				BC0000000000000000000021 /* ../../App/Services/ReadOnlyIndex.swift */,
+				BC0000000000000000000011 /* ../../App/Services/ToolInput.swift */,
 				A50000000000000000000012 /* ../../App/Extensions/Foundation+Extensions.swift */,
 				B13400000000000000000010 /* AppleScriptTests.swift */,
 				C0A7E00000000000000000B1 /* ConnectionApprovalGateTests.swift */,
@@ -580,7 +616,19 @@
 				A40000000000000000000023 /* ../../Shared/Extensions/Bundle+Extensions.swift in Sources */,
 				A40000000000000000000024 /* ../../Shared/Models/Service.swift in Sources */,
 				A50000000000000000000020 /* MailTests.swift in Sources */,
+				BC00000000000000000000B2 /* RecurrenceTests.swift in Sources */,
+				BC0000000000000000000072 /* WeatherHistoryTests.swift in Sources */,
 				A50000000000000000000021 /* ../../App/Services/Mail.swift in Sources */,
+				BC00000000000000000000A2 /* ../../App/Extensions/EventKit+Extensions.swift in Sources */,
+				BC00000000000000000000C2 /* ../../App/Extensions/AppKit+Extensions.swift in Sources */,
+				BC0000000000000000000092 /* ../../App/Services/Reminders.swift in Sources */,
+				BC0000000000000000000082 /* ../../App/Services/OutgoingMail.swift in Sources */,
+				BC0000000000000000000062 /* ../../App/Services/WeatherHistory.swift in Sources */,
+				BC0000000000000000000052 /* ../../App/Services/Weather.swift in Sources */,
+				BC0000000000000000000042 /* ../../App/Services/MailSchedule.swift in Sources */,
+				BC0000000000000000000032 /* ../../App/Services/MailActions.swift in Sources */,
+				BC0000000000000000000022 /* ../../App/Services/ReadOnlyIndex.swift in Sources */,
+				BC0000000000000000000012 /* ../../App/Services/ToolInput.swift in Sources */,
 				A50000000000000000000022 /* ../../App/Extensions/Foundation+Extensions.swift in Sources */,
 				B13400000000000000000020 /* AppleScriptTests.swift in Sources */,
 				A30000000000000000000020 /* HomeToolsTests.swift in Sources */,

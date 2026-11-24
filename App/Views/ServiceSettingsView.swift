@@ -33,6 +33,8 @@ struct ServiceSettingsView: View {
                 ImsgSettingsSection()
             }
 
+            if config.service is ShortcutsService { ShortcutFilesSection() }
+
             if config.service is HomeService {
                 HomeHelperSection(isHomeOn: isOn)
             }

@@ -1,3 +1,4 @@
+import AppKit
 import CoreLocation
 import EventKit
 import Foundation
@@ -25,6 +26,75 @@ private let monthNames = [
     "january", "february", "march", "april", "may", "june", "july", "august",
     "september", "october", "november", "december",
 ]
+
+let recurrenceSchema: JSONSchema = .anyOf([
+    .object(
+        description:
+            "Recurrence rule for a repeating calendar item. Pass null to stop repeating.",
+        properties: [
+            "frequency": .string(
+                description: "How often the item repeats",
+                enum: [
+                    .string("daily"), .string("weekly"), .string("monthly"),
+                    .string("yearly"),
+                ]
+            ),
+            "interval": .integer(
+                description: "Repeat every N units of the frequency",
+                default: .int(1),
+                minimum: 1
+            ),
+            "daysOfTheWeek": .array(
+                description:
+                    "Days of the week the item repeats on; prefix an ordinal (first through fifth, last, or second-to-last through fifth-to-last) to repeat on one weekday of the month, e.g. \"second tuesday\"",
+                items: .string(enum: recurrenceDayValues.map { .string($0) })
+            ),
+            "daysOfTheMonth": .array(
+                description:
+                    "Days of the month the item repeats on; nonzero, with negatives counting from the end (-1 is the last day)",
+                items: .integer(minimum: -31, maximum: 31)
+            ),
+            "monthsOfTheYear": .array(
+                description: "Months the item repeats in",
+                items: .string(enum: monthNames.map { .string($0) })
+            ),
+            "weeksOfTheYear": .array(
+                description:
+                    "Weeks of the year the item repeats in; nonzero, with negatives counting from the end",
+                items: .integer(minimum: -53, maximum: 53)
+            ),
+            "daysOfTheYear": .array(
+                description:
+                    "Days of the year the item repeats on; nonzero, with negatives counting from the end",
+                items: .integer(minimum: -366, maximum: 366)
+            ),
+            "setPositions": .array(
+                description:
+                    "Which of the matched occurrences to keep; nonzero, e.g. -1 for the last one of each period",
+                items: .integer(minimum: -366, maximum: 366)
+            ),
+            "end": .object(
+                description:
+                    "End condition; omit to repeat indefinitely. Pass date or count, not both.",
+                properties: [
+                    "date": .string(
+                        description:
+                            "Date of the last occurrence (inclusive; a date-only value includes that whole day)",
+                        format: .dateTime
+                    ),
+                    "count": .integer(
+                        description: "Total number of occurrences",
+                        minimum: 1
+                    ),
+                ],
+                additionalProperties: false
+            ),
+        ],
+        required: ["frequency"],
+        additionalProperties: false
+    ),
+    .null,
+])
 
 /// Reminder properties accepted by both `reminders_create` and `reminders_update`.
 /// Passing `null` for an optional property in `reminders_update` clears it.
@@ -58,74 +128,7 @@ private let reminderProperties: OrderedDictionary<String, JSONSchema> = [
         ),
         .null,
     ]),
-    "recurrence": .anyOf([
-        .object(
-            description:
-                "Recurrence rule for a repeating reminder. Pass null to stop repeating.",
-            properties: [
-                "frequency": .string(
-                    description: "How often the reminder repeats",
-                    enum: [
-                        .string("daily"), .string("weekly"), .string("monthly"),
-                        .string("yearly"),
-                    ]
-                ),
-                "interval": .integer(
-                    description: "Repeat every N units of the frequency",
-                    default: .int(1),
-                    minimum: 1
-                ),
-                "daysOfTheWeek": .array(
-                    description:
-                        "Days of the week the reminder repeats on; prefix an ordinal (first through fifth, last, or second-to-last through fifth-to-last) to repeat on one weekday of the month, e.g. \"second tuesday\"",
-                    items: .string(enum: recurrenceDayValues.map { .string($0) })
-                ),
-                "daysOfTheMonth": .array(
-                    description:
-                        "Days of the month the reminder repeats on; nonzero, with negatives counting from the end (-1 is the last day)",
-                    items: .integer(minimum: -31, maximum: 31)
-                ),
-                "monthsOfTheYear": .array(
-                    description: "Months the reminder repeats in",
-                    items: .string(enum: monthNames.map { .string($0) })
-                ),
-                "weeksOfTheYear": .array(
-                    description:
-                        "Weeks of the year the reminder repeats in; nonzero, with negatives counting from the end",
-                    items: .integer(minimum: -53, maximum: 53)
-                ),
-                "daysOfTheYear": .array(
-                    description:
-                        "Days of the year the reminder repeats on; nonzero, with negatives counting from the end",
-                    items: .integer(minimum: -366, maximum: 366)
-                ),
-                "setPositions": .array(
-                    description:
-                        "Which of the matched occurrences to keep; nonzero, e.g. -1 for the last one of each period",
-                    items: .integer(minimum: -366, maximum: 366)
-                ),
-                "end": .object(
-                    description:
-                        "End condition; omit to repeat indefinitely. Pass date or count, not both.",
-                    properties: [
-                        "date": .string(
-                            description:
-                                "Date of the last occurrence (inclusive; a date-only value includes that whole day)",
-                            format: .dateTime
-                        ),
-                        "count": .integer(
-                            description: "Total number of occurrences",
-                            minimum: 1
-                        ),
-                    ],
-                    additionalProperties: false
-                ),
-            ],
-            required: ["frequency"],
-            additionalProperties: false
-        ),
-        .null,
-    ]),
+    "recurrence": recurrenceSchema,
     "priority": .string(
         default: .string(EKReminderPriority.none.stringValue),
         enum: EKReminderPriority.allCases.map { .string($0.stringValue) }
@@ -740,7 +743,8 @@ final class RemindersService: Service {
             description: "Create a new reminder list",
             inputSchema: .object(
                 properties: [
-                    "title": .string(description: "Title of the new reminder list")
+                    "title": .string(description: "Title of the new reminder list"),
+                    "color": .string(description: "sRGB list color as #RRGGBB."),
                 ],
                 required: ["title"],
                 additionalProperties: false
@@ -767,7 +771,7 @@ final class RemindersService: Service {
                     userInfo: [NSLocalizedDescriptionKey: "List title is required"]
                 )
             }
-            try Self.rejectUnknownKeys(arguments, allowed: ["title"])
+            try Self.rejectUnknownKeys(arguments, allowed: ["title", "color"])
 
             // Prefer the source of the default list (usually iCloud), falling back
             // to the local source so the list is always creatable.
@@ -788,6 +792,7 @@ final class RemindersService: Service {
             let list = EKCalendar(for: .reminder, eventStore: self.eventStore)
             list.title = title
             list.source = source
+            if let color = try Self.listColor(arguments) { list.cgColor = color }
 
             try self.eventStore.saveCalendar(list, commit: true)
 
@@ -805,7 +810,7 @@ final class RemindersService: Service {
             // so the descriptions of this tool and reminders_lists_delete
             // state that one selector is required.
             // list(_:) rejects a request that has neither.
-            description: "Rename a reminder list. Either identifier or name is required.",
+            description: "Change a reminder list title or color. Either identifier or name is required.",
             inputSchema: .object(
                 properties: [
                     "identifier": .string(
@@ -817,8 +822,8 @@ final class RemindersService: Service {
                             "Current name of the reminder list, used when identifier is omitted"
                     ),
                     "title": .string(description: "New title for the reminder list"),
+                    "color": .string(description: "sRGB list color as #RRGGBB."),
                 ],
-                required: ["title"],
                 additionalProperties: false
             ),
             annotations: .init(
@@ -837,7 +842,7 @@ final class RemindersService: Service {
                 )
             }
 
-            try Self.rejectUnknownKeys(arguments, allowed: ["identifier", "name", "title"])
+            try Self.rejectUnknownKeys(arguments, allowed: ["identifier", "name", "title", "color"])
             let list = try self.list(arguments)
 
             guard list.allowsContentModifications, !list.isImmutable else {
@@ -851,15 +856,13 @@ final class RemindersService: Service {
                 )
             }
 
-            guard case .string(let title) = arguments["title"], !title.isEmpty else {
-                throw NSError(
-                    domain: "RemindersError",
-                    code: 2,
-                    userInfo: [NSLocalizedDescriptionKey: "New list title is required"]
-                )
+            let title = try arguments.optionalText("title")
+            let color = try Self.listColor(arguments)
+            guard title?.isEmpty != true, title != nil || color != nil else {
+                throw ToolInputError("Supply a new title or color.")
             }
-
-            list.title = title
+            if let title { list.title = title }
+            if let color { list.cgColor = color }
 
             // EventKit can still reject the renamed list when it saves.
             // Roll back the title on failure
@@ -1223,8 +1226,21 @@ final class RemindersService: Service {
         return .object(fields)
     }
 
+    private static func listColor(_ arguments: [String: Value]) throws -> CGColor? {
+        guard let text = try arguments.optionalText("color") else { return nil }
+        guard text.utf8.count == 7, text.first == "#", text.dropFirst().allSatisfy(\.isHexDigit),
+            let rgb = UInt32(text.dropFirst(), radix: 16)
+        else { throw ToolInputError("Expected #RRGGBB.") }
+        return NSColor(
+            srgbRed: CGFloat(rgb >> 16) / 255,
+            green: CGFloat((rgb >> 8) & 255) / 255,
+            blue: CGFloat(rgb & 255) / 255,
+            alpha: 1
+        ).cgColor
+    }
+
     /// Builds a recurrence rule from a recurrence configuration object.
-    private static func recurrenceRule(from config: [String: Value]) throws -> EKRecurrenceRule {
+    static func recurrenceRule(from config: [String: Value], timeZone: TimeZone = .current) throws -> EKRecurrenceRule {
         // inputSchema is advertised, not enforced, and the object declares
         // `additionalProperties: false`: a typo like `interva` must not
         // parse as its absent sibling and silently build a different rule.
@@ -1405,11 +1421,19 @@ final class RemindersService: Service {
                 // value covers that whole day instead of stopping at midnight.
                 let endDate: Date
                 if parsedDate.isDateOnly {
-                    endDate =
-                        Calendar.current.date(
-                            byAdding: DateComponents(day: 1, second: -1),
-                            to: Calendar.current.startOfDay(for: parsedDate.date)
-                        ) ?? parsedDate.date
+                    let day = DateFormatter()
+                    day.locale = Locale(identifier: "en_US_POSIX")
+                    day.calendar = Calendar(identifier: .gregorian)
+                    day.timeZone = timeZone
+                    day.dateFormat = "yyyy-MM-dd"
+                    var calendar = Calendar(identifier: .gregorian)
+                    calendar.timeZone = timeZone
+                    guard let start = day.date(from: dateString), day.string(from: start) == dateString,
+                        let interval = calendar.dateInterval(of: .day, for: start)
+                    else {
+                        throw ToolInputError("Invalid recurrence end date.")
+                    }
+                    endDate = interval.end.addingTimeInterval(-1)
                 } else {
                     endDate = parsedDate.date
                 }

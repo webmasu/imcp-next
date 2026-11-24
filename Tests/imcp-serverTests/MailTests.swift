@@ -4,6 +4,27 @@ import SQLite3
 import XCTest
 
 final class MailTests: XCTestCase {
+    func testPersistentScheduleCancelsAndDoesNotRetryUnconfirmedMail() async throws {
+        let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let original = MailSchedule(directory: directory)
+        let mail = try OutgoingMail(["to": ["test@example.org"], "subject": "Fixture", "body": "Body"])
+        let due = Date.now.addingTimeInterval(3600)
+        let cancelled = try await original.enqueue(mail, at: due)
+        let pending = try await original.enqueue(mail, at: due)
+        let reopened = MailSchedule(directory: directory)
+        try await reopened.cancel(cancelled)
+        let tooEarly = try await original.deliverNext { _ in XCTFail("Sent early") }
+        XCTAssertFalse(tooEarly)
+        let claimed = try await reopened.deliverNext(now: due) { _ in throw CancellationError() }
+        XCTAssertTrue(claimed)
+        let again = try await original.deliverNext(now: due) { _ in XCTFail("Claimed twice") }
+        XCTAssertFalse(again)
+        let rows = try await original.list()
+        XCTAssertEqual(rows.first { $0["id"] == cancelled }?["status"], "cancelled")
+        XCTAssertEqual(rows.first { $0["id"] == pending }?["status"], "unconfirmed")
+    }
+
     func testPackageErrorsPreserveToolGuidance() throws {
         XCTAssertThrowsError(try MailService.shared.mailboxID(from: "INBOX")) { error in
             let description = String(describing: MailToolError(underlying: error))
@@ -82,6 +103,18 @@ final class MailIndexTests: XCTestCase {
     override func tearDown() {
         service = nil
         fixture = nil
+    }
+
+    func testThreadUsesConversationAcrossMailboxesAndPaginates() async throws {
+        try fixture.execute("ALTER TABLE messages ADD COLUMN conversation_id INTEGER DEFAULT 0")
+        try fixture.execute("ALTER TABLE messages ADD COLUMN deleted INTEGER DEFAULT 0")
+        try fixture.execute("UPDATE messages SET conversation_id=25 WHERE ROWID IN (1,4)")
+        let first = try await call("mail_thread", ["id": "V10:1:1", "limit": 1])
+        XCTAssertEqual(first.objectValue?["nextAfter"], 1)
+        let next = try await call("mail_thread", ["id": "V10:1:1", "after": 1])
+        XCTAssertEqual(next.objectValue?["messages"]?.arrayValue?.map { $0.objectValue?["@id"] }, ["V10:2:4"])
+        let singleton = try await call("mail_thread", ["id": "V10:1:2"])
+        XCTAssertEqual(singleton.objectValue?["messages"]?.arrayValue?.count, 1)
     }
 
     func testMailboxesListReadsTheIndexAndAccountMap() async throws {
@@ -454,7 +487,7 @@ private final class MailFixture {
         try data.write(to: inbox.appendingPathComponent("Data/Messages/\(name)"))
     }
 
-    private func execute(_ sql: String) throws {
+    func execute(_ sql: String) throws {
         guard sqlite3_exec(writer, sql, nil, nil, nil) == SQLITE_OK else {
             throw Failure(message: String(cString: sqlite3_errmsg(writer)))
         }

@@ -172,7 +172,7 @@ extension NSAppleScript {
     /// - Returns: The result of the script.
     /// - Throws: ``ExecutionError`` when the script does not compile or fails,
     ///   or `CancellationError` when the task is cancelled before the script starts.
-    static func execute(_ source: String) async throws -> NSAppleEventDescriptor {
+    static func execute(_ source: String, arguments: [String]? = nil) async throws -> NSAppleEventDescriptor {
         try Task.checkCancellation()
         let isCancelled = OSAllocatedUnfairLock(initialState: false)
         return try await withTaskCancellationHandler {
@@ -195,7 +195,26 @@ extension NSAppleScript {
                         continuation.resume(throwing: CancellationError())
                         return
                     }
-                    let result = script.executeAndReturnError(&errorInfo)
+                    let result: NSAppleEventDescriptor
+                    if let arguments {
+                        // Pass untrusted text as Apple event parameters to a fixed handler.
+                        let event = NSAppleEventDescriptor(
+                            eventClass: 0x61736372,
+                            eventID: 0x70736272,
+                            targetDescriptor: nil,
+                            returnID: -1,
+                            transactionID: 0
+                        )
+                        event.setParam(NSAppleEventDescriptor(string: "performtask"), forKeyword: 0x736e616d)
+                        let parameters = NSAppleEventDescriptor.list()
+                        for (index, value) in arguments.enumerated() {
+                            parameters.insert(NSAppleEventDescriptor(string: value), at: index + 1)
+                        }
+                        event.setParam(parameters, forKeyword: 0x2d2d2d2d)
+                        result = script.executeAppleEvent(event, error: &errorInfo)
+                    } else {
+                        result = script.executeAndReturnError(&errorInfo)
+                    }
                     if errorInfo != nil {
                         continuation.resume(throwing: ExecutionError(errorInfo: errorInfo))
                     } else {

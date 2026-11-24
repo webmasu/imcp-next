@@ -15,13 +15,14 @@ final class WeatherService: Service {
     ///
     /// Ontology includes it only in a forecast that is the root value,
     /// so a list of forecasts carries it on the enclosing document.
-    private static let attribution: [String: Value] = [
+    static let attribution: [String: Value] = [
         "provider": "Apple Weather",
         "attribution": "Weather data provided by Apple Weather",
         "attributionLink": "https://weatherkit.apple.com/legal-attribution.html",
     ]
 
     var tools: [Tool] {
+        Self.historical
         Tool(
             name: "weather_current",
             description:

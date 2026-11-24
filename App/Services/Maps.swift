@@ -10,17 +10,7 @@ private let defaultSearchLimit: Int = 10
 private let defaultMapImageSize: CGSize = CGSize(width: 1024, height: 1024)
 
 final class MapsService: NSObject, Service {
-    private let searchCompleter = MKLocalSearchCompleter()
-    private var searchResults: [MKLocalSearchCompletion] = []
-    private var searchContinuation: CheckedContinuation<[MKLocalSearchCompletion], Error>?
-
     static let shared = MapsService()
-
-    override init() {
-        log.debug("Initializing maps service")
-        super.init()
-        self.searchCompleter.delegate = self
-    }
 
     var isActivated: Bool {
         get async {
@@ -36,6 +26,8 @@ final class MapsService: NSObject, Service {
     }
 
     var tools: [Tool] {
+        Self.autocomplete
+        Self.distance
         Tool(
             name: "maps_search",
             description: "Search for places, addresses, points of interest by text query",
@@ -128,7 +120,7 @@ final class MapsService: NSObject, Service {
         Tool(
             name: "maps_directions",
             description: """
-                Get automobile or walking directions between two locations.
+                Get automobile, cycling or walking directions between two locations.
                 Use maps_eta for a transit travel-time estimate.
                 """,
             inputSchema: .object(
@@ -160,7 +152,7 @@ final class MapsService: NSObject, Service {
                     "transportType": .string(
                         description: "Transport type for the route",
                         default: "automobile",
-                        enum: ["automobile", "walking", "any"]
+                        enum: ["automobile", "walking", "cycling", "any"]
                     ),
                 ],
                 additionalProperties: false
@@ -206,6 +198,7 @@ final class MapsService: NSObject, Service {
             switch arguments["transportType"]?.stringValue {
             case "automobile":
                 transportType = .automobile
+            case "cycling": transportType = .cycling
             case "walking":
                 transportType = .walking
             case "transit":
@@ -367,7 +360,7 @@ final class MapsService: NSObject, Service {
                     "transportType": .string(
                         description: "Transport type",
                         default: "automobile",
-                        enum: ["automobile", "walking", "transit"]
+                        enum: ["automobile", "walking", "cycling", "transit"]
                     ),
                 ],
                 required: [
@@ -382,27 +375,10 @@ final class MapsService: NSObject, Service {
                 openWorldHint: true
             )
         ) { arguments in
-            guard let originLat = arguments["originLatitude"]?.doubleValue,
-                let originLng = arguments["originLongitude"]?.doubleValue,
-                let destLat = arguments["destinationLatitude"]?.doubleValue,
-                let destLng = arguments["destinationLongitude"]?.doubleValue
-            else {
-                throw NSError(
-                    domain: "MapsServiceError",
-                    code: 9,
-                    userInfo: [
-                        NSLocalizedDescriptionKey: "Origin and destination coordinates required"
-                    ]
-                )
-            }
-
-            // Create origin and destination placemarks
-            let originPlacemark = MKPlacemark(
-                coordinate: CLLocationCoordinate2D(latitude: originLat, longitude: originLng)
-            )
-            let destPlacemark = MKPlacemark(
-                coordinate: CLLocationCoordinate2D(latitude: destLat, longitude: destLng)
-            )
+            let origin = try arguments.location(latitude: "originLatitude", longitude: "originLongitude")
+            let destination = try arguments.location(latitude: "destinationLatitude", longitude: "destinationLongitude")
+            let originPlacemark = MKPlacemark(coordinate: origin.coordinate)
+            let destPlacemark = MKPlacemark(coordinate: destination.coordinate)
 
             // Create map items from placemarks
             let originItem = MKMapItem(placemark: originPlacemark)
@@ -418,6 +394,7 @@ final class MapsService: NSObject, Service {
                 switch transportTypeStr {
                 case "automobile":
                     directionsRequest.transportType = .automobile
+                case "cycling": directionsRequest.transportType = .cycling
                 case "walking":
                     directionsRequest.transportType = .walking
                 case "transit":
@@ -660,15 +637,8 @@ final class MapsService: NSObject, Service {
             }
 
             return mapItem
-        } else if let coordinates = coordinates,
-            let lat = coordinates["latitude"]?.doubleValue,
-            let lng = coordinates["longitude"]?.doubleValue
-        {
-
-            // Create placemark and map item from coordinates
-            let placemark = MKPlacemark(
-                coordinate: CLLocationCoordinate2D(latitude: lat, longitude: lng)
-            )
+        } else if let coordinates {
+            let placemark = try MKPlacemark(coordinate: coordinates.location().coordinate)
             return MKMapItem(placemark: placemark)
         } else {
             throw NSError(
@@ -679,19 +649,5 @@ final class MapsService: NSObject, Service {
                 ]
             )
         }
-    }
-}
-
-// MARK: - MKLocalSearchCompleterDelegate
-extension MapsService: MKLocalSearchCompleterDelegate {
-    func completerDidUpdateResults(_ completer: MKLocalSearchCompleter) {
-        self.searchResults = completer.results
-        self.searchContinuation?.resume(returning: completer.results)
-        self.searchContinuation = nil
-    }
-
-    func completer(_ completer: MKLocalSearchCompleter, didFailWithError error: Error) {
-        self.searchContinuation?.resume(throwing: error)
-        self.searchContinuation = nil
     }
 }

@@ -4,6 +4,15 @@ import os
 
 /// These scripts send no Apple events to other apps.
 final class AppleScriptTests: XCTestCase {
+    func testArgumentsRemainData() async throws {
+        let input = "quotation \" and newline\nreturn 42"
+        let result = try await NSAppleScript.execute(
+            "on performtask(a, b)\nreturn a & b\nend performtask",
+            arguments: [input, "ö"]
+        )
+        XCTAssertEqual(result.stringValue, input + "ö")
+    }
+
     @MainActor
     func testScriptsRunOffTheMainThread() async throws {
         // Hold the serial queue. A script that ran on the main actor

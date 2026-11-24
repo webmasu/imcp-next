@@ -35,6 +35,9 @@ final class NotesService: NSObject, Service, NSOpenSavePanelDelegate {
     }
 
     var tools: [Tool] {
+        createNote
+        openNote
+        updateNote
         Tool(
             name: "notes_folders",
             description: "List the folders in the Notes app, with their accounts and how many notes each holds",
@@ -214,10 +217,15 @@ final class NotesService: NSObject, Service, NSOpenSavePanelDelegate {
             )
         ) { arguments in
             guard
-                let argument = try self.argument("id", in: arguments, as: \.stringValue),
-                let id = TopoText.Note.ID(argument.trimmingCharacters(in: .whitespacesAndNewlines))
+                let argument = try self.argument("id", in: arguments, as: \.stringValue)
             else {
                 throw ArgumentError.invalid("id must be the @id of a note")
+            }
+            let stable =
+                argument.hasPrefix("x-coredata://")
+                ? try await self.resolveNoteIdentifier(argument, entity: "ICNote").stable : argument
+            guard let id = TopoText.Note.ID(stable.trimmingCharacters(in: .whitespacesAndNewlines)) else {
+                throw ArgumentError.invalid("id must identify a note")
             }
             let isMarkdown: Bool
             switch try self.argument("format", in: arguments, as: \.stringValue) ?? "markdown" {
@@ -376,7 +384,7 @@ final class NotesService: NSObject, Service, NSOpenSavePanelDelegate {
     /// A bookmark that no longer resolves grants nothing, so no call can hold its grant;
     /// if the default path is readable then, as with Full Disk Access, it's used instead.
     /// Errors from TopoText are rethrown as `StoreError`, which describes them for the client.
-    private func withStore<T>(_ operation: (TopoText.Store) async throws -> T) async throws -> T {
+    func withStore<T>(_ operation: (TopoText.Store) async throws -> T) async throws -> T {
         do {
             guard UserDefaults.standard.data(forKey: notesContainerBookmarkKey) != nil else {
                 return try await operation(TopoText.Store(root: notesContainerURL))

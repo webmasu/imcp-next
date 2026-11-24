@@ -26,7 +26,7 @@ and a [growing list of clients][mcp-clients] that support the
       <img src="Assets/contacts.svg" width="48" height="48" alt="" role="presentation"/>
     </th>
     <td><strong>Contacts</strong></td>
-    <td>Access contact information about yourself and search your contacts by name, phone number, or email address.</td>
+    <td>Search, create and edit Apple contacts. Inspect linked cards by account and delete an individual source card.</td>
   </tr>
   <tr>
     <th width="48">
@@ -47,14 +47,14 @@ and a [growing list of clients][mcp-clients] that support the
       <img src="Assets/mail.svg" width="48" height="48" alt="" role="presentation"/>
     </th>
     <td><strong>Mail</strong></td>
-    <td>List mailboxes, search messages by sender, subject, mailbox, date, or read status, read messages stored on your Mac, and open new drafts in your default email app. Reading mail needs <a href="#mail-access-and-search">access to your Mail folder</a>.</td>
+    <td>List mailboxes, search messages by sender, subject, mailbox, date, or read status, read conversations across mailboxes, mark messages, refresh accounts, and compose, send or schedule mail. Reading mail needs <a href="#mail-access-and-search">access to your Mail folder</a>.</td>
   </tr>
   <tr>
     <th width="48">
       <img src="Assets/maps.svg" width="48" height="48" alt="" role="presentation"/>
     </th>
     <td><strong>Maps</strong></td>
-    <td>Provides location services including place search, directions, points of interest lookup, travel time estimation, and static map image generation.</td>
+    <td>Search places and address suggestions, calculate distance, request driving, walking or cycling directions and travel times, and generate map images.</td>
   </tr>
   <tr>
     <th width="48">
@@ -75,7 +75,7 @@ and a [growing list of clients][mcp-clients] that support the
       <img src="Assets/notes.svg" width="48" height="48" alt="" role="presentation"/>
     </th>
     <td><strong>Notes</strong></td>
-    <td>Search notes by text, folder, or date, and read them as Markdown with their checklists, tables, and links.</td>
+    <td>Search and read notes as Markdown. Open notes in Notes, create them from HTML, and replace the contents of unlocked notes without embedded items.</td>
   </tr>
   <tr>
     <th width="48">
@@ -96,7 +96,7 @@ and a [growing list of clients][mcp-clients] that support the
       <img src="Assets/shortcuts.svg" width="48" height="48" alt="" role="presentation"/>
     </th>
     <td><strong>Shortcuts</strong></td>
-    <td>List and run shortcuts on your Mac, with optional text input.</td>
+    <td>Browse folders and shortcut details, open shortcuts in the editor, and run them with text or files.</td>
   </tr>
   <tr>
     <th width="48">
@@ -117,7 +117,7 @@ and a [growing list of clients][mcp-clients] that support the
       <img src="Assets/weather.svg" width="48" height="48" alt="" role="presentation"/>
     </th>
     <td><strong>Weather</strong></td>
-    <td>Access current weather conditions including temperature, wind speed, and weather conditions for any location.</td>
+    <td>Get current conditions, forecasts and historical daily weather from August 1, 2021. Request up to ten days in the time zone at the coordinates.</td>
   </tr>
 </table>
 
@@ -284,7 +284,32 @@ remove the client in "Settings" > "Clients" and trust it again.
 
 </details>
 
+### Calendar, reminder lists and shortcuts
+
+`events_create` and `events_update` accept the same `recurrence` object as Reminders.
+For the first Monday of each month, use
+`{"frequency":"monthly","daysOfTheWeek":["first monday"]}`.
+To replace a series rule from a particular occurrence, pass its start time and
+`"span":"futureEvents"`. Set `recurrence` to `null` to stop repeating.
+Reminder list creation and renaming accept `color` in `#RRGGBB` format.
+
+`shortcuts_list` accepts `folder` and `details`. Use `shortcuts_folders` to discover folders and
+`shortcuts_open` to open a shortcut in the editor. In Settings → Shortcuts, choose a folder
+for `shortcuts_run` file inputs and outputs. Supply absolute paths in `inputPath` and
+`outputPath`. The output path must be new. Text input and output remain available.
+
 ### Mail access and search
+
+Use `mail_send` for immediate delivery or `mail_schedule` with an ISO 8601
+`scheduledTime` that includes a UTC offset. Each accepts a configured sender address,
+recipient arrays, a subject and a plain-text body. Mail and Notes actions and
+detailed shortcut metadata can prompt for macOS Automation permission.
+
+The schedule is stored locally. iMCP checks due messages while running with the
+server, Mail service, `mail_send` and `mail_schedule` enabled. It picks up overdue
+messages after launch or wake. Use `mail_scheduled_list` to see status and
+`mail_scheduled_cancel` to cancel a pending entry. An accepted entry means Mail
+accepted the send request. If the result is unconfirmed, check Mail before resending.
 
 Mail store access uses [Envelope](https://github.com/mattt/Envelope),
 which reads the local index and message files
@@ -298,10 +323,10 @@ It does not save or send a message.
 
 Mail reads use a read-only SQLite connection and require WAL journal mode.
 iMCP does not change the index's journal mode or run checkpoints.
-It permits one Mail database connection at a time;
+Envelope serializes its database operations. For Envelope reads,
 concurrent reads wait their turn,
 and a read returns an error if SQLite reports a lock conflict.
-Each SQL statement has a 100 ms execution budget,
+Each Envelope SQL statement has a 100 ms execution budget,
 all statements of one read share a 1 s budget,
 and statements check task cancellation.
 The deadline is cooperative; it cannot interrupt a filesystem operation

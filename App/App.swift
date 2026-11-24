@@ -59,6 +59,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         UserDefaults.standard.object(forKey: "showMenuBarExtra") as? Bool ?? true
 
     func applicationDidFinishLaunching(_ notification: Notification) {
+        Task { await MailSchedule.shared.run() }
         BusyContactImport.prune()
         // An unset preference defaults to showing the menu bar item.
         if UserDefaults.standard.object(forKey: "showMenuBarExtra") as? Bool == false {

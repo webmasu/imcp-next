@@ -16,7 +16,7 @@
 	<key>LSMultipleInstancesProhibited</key>
 	<true/>
 	<key>NSAppleEventsUsageDescription</key>
-	<string>iMCP uses Apple Events to control and read now playing data from Music.</string>
+	<string>iMCP uses Automation for the Mail, Notes, Shortcuts, and Music actions you request.</string>
 	<key>NSAppleMusicUsageDescription</key>
 	<string>iMCP uses Apple Music access to search the Apple Music catalog.</string>
 	<key>NSBonjourServices</key>

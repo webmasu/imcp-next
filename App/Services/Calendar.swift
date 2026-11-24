@@ -352,7 +352,8 @@ final class CalendarService: Service {
                         )
                     ),
                     "hasAlarms": .boolean(),
-                    "isRecurring": .boolean(),
+                    "isRecurring": .boolean(description: "When true, supply a recurrence rule."),
+                    "recurrence": recurrenceSchema,
                 ],
                 required: ["title", "start", "end"],
                 additionalProperties: false
@@ -519,6 +520,15 @@ final class CalendarService: Service {
             }
 
             // Save the event
+            if let flag = arguments["isRecurring"] {
+                guard let recurring = flag.boolValue, recurring == (arguments["recurrence"]?.objectValue != nil) else {
+                    throw ToolInputError("isRecurring must agree with the supplied recurrence rule.")
+                }
+            }
+            if let rule = arguments["recurrence"] {
+                if !event.isAllDay { event.timeZone = .current }
+                event.recurrenceRules = try Self.rules(rule, timeZone: event.timeZone ?? .current)
+            }
             try self.eventStore.save(event, span: .thisEvent)
 
             var result = Event(event)
@@ -672,7 +682,7 @@ final class CalendarService: Service {
         Tool(
             name: "events_update",
             description:
-                "Update an existing calendar event. Only provide values for properties that need to be changed; omit any properties that should remain unchanged. Passing null clears title, location, notes, url, or alarms. For a recurring event, pass the start date of the occurrence to update.",
+                "Update an existing calendar event. Only provide values for properties that need to be changed; omit any properties that should remain unchanged. Passing null clears title, location, notes, url, or alarms. For a recurring event, pass the start date of the occurrence to update. To change or clear the series rule, use span futureEvents.",
             inputSchema: .object(
                 properties: [
                     "identifier": .string(description: "The event identifier"),
@@ -690,6 +700,7 @@ final class CalendarService: Service {
                             "New end date/time for the event. If timezone is omitted, local time is assumed. Date-only uses local midnight.",
                         format: .dateTime
                     ),
+                    "recurrence": recurrenceSchema,
                     "occurrence": .string(
                         description:
                             "Start date of the occurrence to update, since every occurrence of a recurring event shares the same identifier. Required for recurring events.",
@@ -1166,6 +1177,13 @@ final class CalendarService: Service {
                 )
             }
 
+            if let value = arguments["recurrence"] {
+                guard !event.isDetached, !event.hasRecurrenceRules || span == .futureEvents else {
+                    throw ToolInputError("To edit the series rule select a regular occurrence and span futureEvents.")
+                }
+                event.recurrenceRules = try Self.rules(value, timeZone: event.timeZone ?? .current)
+            }
+
             if case .string(let title) = arguments["title"] {
                 event.title = title
             } else if case .null = arguments["title"] {
@@ -1247,7 +1265,12 @@ final class CalendarService: Service {
                 event.alarms = []
             }
 
-            try self.eventStore.save(event, span: span)
+            do {
+                try self.eventStore.save(event, span: span)
+            } catch {
+                event.rollback()
+                throw error
+            }
 
             var result = Event(event)
             result.identifier = event.eventIdentifier
@@ -1278,6 +1301,12 @@ final class CalendarService: Service {
             return Int(exactly: double)
         default: return nil
         }
+    }
+
+    private static func rules(_ value: Value, timeZone: TimeZone) throws -> [EKRecurrenceRule]? {
+        if case .null = value { return nil }
+        guard let config = value.objectValue else { throw ToolInputError("Expected a recurrence rule or null.") }
+        return [try RemindersService.recurrenceRule(from: config, timeZone: timeZone)]
     }
 
     /// Builds an alarm from an alarm configuration object, throwing on any

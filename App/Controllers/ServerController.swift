@@ -99,7 +99,8 @@ enum ServiceRegistry {
         var configs: [ServiceConfig] = [
             ServiceConfig(
                 name: "BusyContacts",
-                summary: "Read BusyContacts cards and photos, and choose whether to allow creating or updating contacts.",
+                summary:
+                    "Read BusyContacts cards and photos, and choose whether to allow creating or updating contacts.",
                 iconName: "person.2",
                 color: .brown,
                 service: BusyContactsService.shared,
@@ -123,7 +124,7 @@ enum ServiceRegistry {
             ),
             ServiceConfig(
                 name: "Contacts",
-                summary: "Look up your own contact card, and search, create, and update contacts.",
+                summary: "Manage Apple contacts and their linked account cards.",
                 iconName: "person.crop.square.filled.and.at.rectangle.fill",
                 color: .brown,
                 service: ContactsService.shared,
@@ -155,7 +156,7 @@ enum ServiceRegistry {
             ),
             ServiceConfig(
                 name: "Mail",
-                summary: "Search and read the mail stored on your Mac, and open new drafts in your email app.",
+                summary: "Read mail conversations, mark messages, and send or schedule mail.",
                 iconName: "envelope.fill",
                 color: .blue,
                 service: MailService.shared,
@@ -179,7 +180,7 @@ enum ServiceRegistry {
             ),
             ServiceConfig(
                 name: "Notes",
-                summary: "Search notes by text, folder, or date, and read them as Markdown.",
+                summary: "Search, read, open and edit notes in Apple Notes.",
                 iconName: "note.text",
                 color: .yellow,
                 service: NotesService.shared,
@@ -203,7 +204,7 @@ enum ServiceRegistry {
             ),
             ServiceConfig(
                 name: "Shortcuts",
-                summary: "List and run the shortcuts on your Mac, with optional text input.",
+                summary: "Browse shortcut folders, open the editor, and run shortcuts with text or files.",
                 iconName: "square.2.layers.3d",
                 color: .indigo,
                 service: ShortcutsService.shared,
@@ -234,7 +235,7 @@ enum ServiceRegistry {
             configs.append(
                 ServiceConfig(
                     name: "Weather",
-                    summary: "Get current weather and daily, hourly, and minute-by-minute forecasts.",
+                    summary: "Get historical daily weather, current conditions, and forecasts.",
                     iconName: "cloud.sun.fill",
                     color: .cyan,
                     service: WeatherService.shared,

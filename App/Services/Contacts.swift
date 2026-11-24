@@ -22,9 +22,9 @@ private let contactKeys =
         CNContactUrlAddressesKey,
         CNContactPostalAddressesKey,
         CNContactRelationsKey,
-    ] as [CNKeyDescriptor]
+    ] as [CNKeyDescriptor] + (ContactsService.canWriteNote ? [CNContactNoteKey as CNKeyDescriptor] : [])
 
-private let contactProperties: OrderedDictionary<String, JSONSchema> = [
+private let baseContactProperties: OrderedDictionary<String, JSONSchema> = [
     "givenName": .string(),
     "familyName": .string(),
     "organizationName": .string(),
@@ -77,13 +77,21 @@ private let contactProperties: OrderedDictionary<String, JSONSchema> = [
     ),
 ]
 
+private var contactProperties: OrderedDictionary<String, JSONSchema> {
+    var fields = baseContactProperties
+    if ContactsService.canWriteNote {
+        fields["note"] = .string(description: "Contact note. Pass an empty string to clear.")
+    }
+    return fields
+}
+
 final class ContactsService: Service {
-    private let contactStore = CNContactStore()
+    let contactStore = CNContactStore()
     private let contactStoreQueue = DispatchQueue(label: "iMCP.contacts", qos: .utility)
 
     static let shared = ContactsService()
 
-    private func runContactStore<T>(_ operation: @escaping () throws -> T) async throws -> T {
+    func runContactStore<T>(_ operation: @escaping () throws -> T) async throws -> T {
         try await withCheckedThrowingContinuation { continuation in
             contactStoreQueue.async {
                 continuation.resume(with: Result { try operation() })
@@ -133,6 +141,8 @@ final class ContactsService: Service {
     }
 
     var tools: [Tool] {
+        sourceCards
+        deleteCard
         Tool(
             name: "contacts_me",
             description:
@@ -277,7 +287,7 @@ final class ContactsService: Service {
         Tool(
             name: "contacts_update",
             description:
-                "Update an existing contact's information. Only provide values for properties that need to be changed; omit any properties that should remain unchanged. Reading or changing contact notes is not supported.",
+                "Update an existing contact's information. Only provide values for properties that need to be changed; omit any properties that should remain unchanged.",
             inputSchema: .object(
                 properties: ([
                     "identifier": .string(
@@ -330,7 +340,7 @@ final class ContactsService: Service {
                     )
                 }
 
-                updatedContact.populate(from: arguments)
+                try Self.populate(updatedContact, from: arguments)
 
                 let saveRequest = CNSaveRequest()
                 saveRequest.update(updatedContact)
@@ -356,7 +366,7 @@ final class ContactsService: Service {
         ) { arguments in
             return try await self.runContactStore {
                 let newContact = CNMutableContact()
-                newContact.populate(from: arguments)
+                try Self.populate(newContact, from: arguments)
 
                 if newContact.givenName.isEmpty {
                     throw NSError(

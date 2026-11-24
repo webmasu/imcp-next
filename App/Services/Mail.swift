@@ -69,6 +69,14 @@ final class MailService: NSObject, Service, NSOpenSavePanelDelegate, Sendable {
     }
 
     var tools: [Tool] {
+        mailAccounts
+        readThread
+        refreshMail
+        markMail
+        sendMail
+        scheduleMail
+        listScheduledMail
+        cancelScheduledMail
         Tool(
             name: "mail_mailboxes_list",
             description:
@@ -316,7 +324,7 @@ final class MailService: NSObject, Service, NSOpenSavePanelDelegate, Sendable {
 
     /// Runs an operation on the store inside the grant for the bookmarked folder,
     /// or at the default path when nothing is bookmarked.
-    private func withStore<T>(_ operation: (Envelope.Store) async throws -> T) async throws -> T {
+    func withStore<T>(_ operation: (Envelope.Store) async throws -> T) async throws -> T {
         do {
             let root = try resolveBookmarkURL() ?? mailDirectoryURL
 
