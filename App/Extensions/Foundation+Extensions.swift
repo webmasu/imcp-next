@@ -20,73 +20,42 @@ extension ISO8601DateFormatter {
     /// - Parameters:
     ///   - dateString: The string representation of the date.
     /// - Returns: A `Date` object if parsing is successful with any format, otherwise `nil`.
-    static func lenientDate(fromISO8601String dateString: String) -> Date? {
+    static func lenientDate(fromISO8601String dateString: String, timeZone: TimeZone = .current) -> Date? {
+        // Foundation's ISO formatter rolls impossible dates into the following month.
+        // Validate the civil day and the complete input before interpreting its offset.
+        let pattern =
+            #"^[0-9]{4}-(0[1-9]|1[0-2])-([0-2][0-9]|3[01])([Tt ]([01][0-9]|2[0-3]):[0-5][0-9]:[0-5][0-9](\.[0-9]+)?([Zz]|[+-]([01][0-9]|2[0-3])(:?[0-5][0-9])?)?)?\z"#
+        guard dateString.range(of: pattern, options: .regularExpression) != nil else { return nil }
+        let civil = DateFormatter()
+        civil.locale = Locale(identifier: "en_US_POSIX")
+        civil.calendar = Calendar(identifier: .gregorian)
+        civil.timeZone = TimeZone.gmt
+        civil.isLenient = false
+        civil.dateFormat = "yyyy-MM-dd"
+        let day = String(dateString.prefix(10))
+        guard let checked = civil.date(from: day), civil.string(from: checked) == day else { return nil }
+
+        var value = dateString.uppercased().replacingOccurrences(of: " ", with: "T")
+        if value.count == 10 {
+            civil.timeZone = timeZone
+            return civil.date(from: day)
+        }
+        if let offset = value.dropFirst(10).firstIndex(where: { $0 == "+" || $0 == "-" }),
+            value.distance(from: offset, to: value.endIndex) == 3
+        {
+            value += ":00"
+        }
         let formatter = ISO8601DateFormatter()
-
-        let optionsToTry: [ISO8601DateFormatter.Options] = [
-            // `yyyy-MM-dd'T'HH:mm:ss.SSSZ`, `yyyy-MM-dd'T'HH:mm:ss.SSSZZZZZ`
-            [.withInternetDateTime, .withFractionalSeconds],
-
-            // `yyyy-MM-dd'T'HH:mm:ssZ`, `yyyy-MM-dd'T'HH:mm:ssZZZZZ`
-            [.withInternetDateTime],
-
-            // `yyyy-MM-dd'T'HH:mm:ss.SSS` (no timezone)
-            [.withFullDate, .withFullTime, .withFractionalSeconds],
-
-            // `yyyy-MM-dd'T'HH:mm:ss` (no timezone)
-            [.withFullDate, .withFullTime],
-
-            // `yyyy-MM-dd HH:mm:ss.SSSZZZZZ`
-            [.withFullDate, .withFullTime, .withSpaceBetweenDateAndTime, .withFractionalSeconds],
-
-            // `yyyy-MM-dd HH:mm:ssZZZZZ`
-            [.withFullDate, .withFullTime, .withSpaceBetweenDateAndTime],
-        ]
-
-        for options in optionsToTry {
-            formatter.formatOptions = options
-            if let date = formatter.date(from: dateString) {
-                return date
-            }
+        formatter.timeZone = timeZone
+        let hasOffset = value.dropFirst(10).contains(where: { "+-Z".contains($0) })
+        if !hasOffset {
+            civil.timeZone = timeZone
+            civil.dateFormat = value.contains(".") ? "yyyy-MM-dd'T'HH:mm:ss.SSS" : "yyyy-MM-dd'T'HH:mm:ss"
+            return civil.date(from: value)
         }
-
-        // If the string already includes a timezone suffix on a *time* component,
-        // don't guess with local-time parsing. We must NOT run this check on a
-        // bare `yyyy-MM-dd` because the trailing `-DD` would match the
-        // `[+-]\d{2}` branch of this regex and falsely classify the day as a
-        // timezone offset, causing the parser to bail before trying the
-        // `yyyy-MM-dd` fallback below.
-        let hasTimeZoneInfo =
-            dateString.count > 10
-            && dateString.range(
-                of: #"([Zz]|[+-]\d{2}(:?\d{2})?)$"#,
-                options: .regularExpression
-            ) != nil
-        guard !hasTimeZoneInfo else {
-            return nil
-        }
-
-        // Fall back to local-time parsing for timezone-less inputs.
-        let fallbackFormats = [
-            "yyyy-MM-dd'T'HH:mm:ss.SSS",
-            "yyyy-MM-dd'T'HH:mm:ss",
-            "yyyy-MM-dd HH:mm:ss.SSS",
-            "yyyy-MM-dd HH:mm:ss",
-            "yyyy-MM-dd",
-        ]
-
-        let fallbackFormatter = DateFormatter()
-        fallbackFormatter.locale = Locale(identifier: "en_US_POSIX")
-        fallbackFormatter.timeZone = TimeZone.current
-
-        for format in fallbackFormats {
-            fallbackFormatter.dateFormat = format
-            if let date = fallbackFormatter.date(from: dateString) {
-                return date
-            }
-        }
-
-        return nil
+        formatter.formatOptions =
+            value.contains(".") ? [.withInternetDateTime, .withFractionalSeconds] : [.withInternetDateTime]
+        return formatter.date(from: value)
     }
 
     /// Attempts to parse a date string using common ISO 8601 variants,
@@ -95,10 +64,11 @@ extension ISO8601DateFormatter {
     ///   - dateString: The string representation of the date.
     /// - Returns: A tuple containing the `Date` object and a boolean indicating if the date is date-only.
     static func parsedLenientISO8601Date(
-        fromISO8601String dateString: String
+        fromISO8601String dateString: String,
+        timeZone: TimeZone = .current
     ) -> (date: Date, isDateOnly: Bool)? {
         let isDateOnly = isDateOnlyISO8601String(dateString)
-        guard let date = lenientDate(fromISO8601String: dateString) else {
+        guard let date = lenientDate(fromISO8601String: dateString, timeZone: timeZone) else {
             return nil
         }
         return (date, isDateOnly)

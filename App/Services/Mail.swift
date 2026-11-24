@@ -77,6 +77,7 @@ final class MailService: NSObject, Service, NSOpenSavePanelDelegate, Sendable {
         scheduleMail
         listScheduledMail
         cancelScheduledMail
+        deleteScheduledMail
         Tool(
             name: "mail_mailboxes_list",
             description:

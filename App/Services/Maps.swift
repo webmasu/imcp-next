@@ -36,6 +36,7 @@ final class MapsService: NSObject, Service {
                     "query": .string(
                         description: "Search text (place name, address, etc.)"
                     ),
+                    "limit": .integer(description: "Maximum results to return", minimum: 1),
                     "region": .object(
                         description: "Region to bias search results",
                         properties: [
@@ -72,12 +73,12 @@ final class MapsService: NSObject, Service {
             searchRequest.naturalLanguageQuery = query
 
             // Configure region if provided
-            if let regionArg = arguments["region"]?.objectValue,
-                let lat = regionArg["latitude"]?.doubleValue,
-                let lon = regionArg["longitude"]?.doubleValue
-            {
-                let radius = regionArg["radius"]?.doubleValue ?? defaultSearchRadius
-                let center = CLLocationCoordinate2D(latitude: lat, longitude: lon)
+            let limit = arguments["limit"]?.intValue ?? Int.max
+            guard limit > 0 else { throw ToolInputError("limit must be positive.") }
+            if let regionArg = arguments["region"]?.objectValue {
+                let center = try regionArg.location().coordinate
+                let radius = regionArg["radius"]?.numericValue ?? defaultSearchRadius
+                guard radius > 0 else { throw ToolInputError("radius must be positive.") }
                 let region = MKCoordinateRegion(
                     center: center,
                     latitudinalMeters: radius,
@@ -108,7 +109,7 @@ final class MapsService: NSObject, Service {
                     }
 
                     // Convert MKMapItems to Ontology Place objects
-                    let places = response.mapItems.map { item -> Place in
+                    let places = response.mapItems.prefix(limit).map { item -> Place in
                         return Place(item)
                     }
 
@@ -120,8 +121,7 @@ final class MapsService: NSObject, Service {
         Tool(
             name: "maps_directions",
             description: """
-                Get automobile, cycling or walking directions between two locations.
-                Use maps_eta for a transit travel-time estimate.
+                Get driving, cycling or walking directions, or a transit estimate with departure, arrival, distance and an Apple Maps link.
                 """,
             inputSchema: .object(
                 properties: [
@@ -152,7 +152,7 @@ final class MapsService: NSObject, Service {
                     "transportType": .string(
                         description: "Transport type for the route",
                         default: "automobile",
-                        enum: ["automobile", "walking", "cycling", "any"]
+                        enum: ["automobile", "walking", "cycling", "transit", "any"]
                     ),
                 ],
                 additionalProperties: false
@@ -166,8 +166,8 @@ final class MapsService: NSObject, Service {
             // Need either origin address or coordinates
             guard
                 arguments["originAddress"]?.stringValue != nil
-                    || (arguments["originCoordinates"]?.objectValue?["latitude"]?.doubleValue != nil
-                        && arguments["originCoordinates"]?.objectValue?["longitude"]?.doubleValue
+                    || (arguments["originCoordinates"]?.objectValue?["latitude"]?.numericValue != nil
+                        && arguments["originCoordinates"]?.objectValue?["longitude"]?.numericValue
                             != nil)
             else {
                 throw NSError(
@@ -180,10 +180,10 @@ final class MapsService: NSObject, Service {
             // Need either destination address or coordinates
             guard
                 arguments["destinationAddress"]?.stringValue != nil
-                    || (arguments["destinationCoordinates"]?.objectValue?["latitude"]?.doubleValue
+                    || (arguments["destinationCoordinates"]?.objectValue?["latitude"]?.numericValue
                         != nil
                         && arguments["destinationCoordinates"]?.objectValue?["longitude"]?
-                            .doubleValue != nil)
+                            .numericValue != nil)
             else {
                 throw NSError(
                     domain: "MapsServiceError",
@@ -202,14 +202,7 @@ final class MapsService: NSObject, Service {
             case "walking":
                 transportType = .walking
             case "transit":
-                throw NSError(
-                    domain: "MapsServiceError",
-                    code: 16,
-                    userInfo: [
-                        NSLocalizedDescriptionKey:
-                            "Transit directions are unavailable. Use maps_eta for a travel-time estimate."
-                    ]
-                )
+                transportType = .transit
             default:
                 transportType = .any
             }
@@ -231,32 +224,14 @@ final class MapsService: NSObject, Service {
             directionsRequest.destination = destinationItem
             directionsRequest.transportType = transportType
 
-            return try await withCheckedThrowingContinuation {
-                (continuation: CheckedContinuation<Trip, Error>) in
-
-                let directions = MKDirections(request: directionsRequest)
-                directions.calculate { response, error in
-                    if let error = error {
-                        continuation.resume(throwing: error)
-                        return
-                    }
-
-                    guard let response = response, !response.routes.isEmpty else {
-                        continuation.resume(
-                            throwing: NSError(
-                                domain: "MapsServiceError",
-                                code: 5,
-                                userInfo: [NSLocalizedDescriptionKey: "No routes found"]
-                            )
-                        )
-                        return
-                    }
-
-                    let trip = Trip(response)
-
-                    continuation.resume(returning: trip)
-                }
+            let directions = MKDirections(request: directionsRequest)
+            if transportType == .transit {
+                return MapTrip.estimate(try await directions.calculateETA(), transportType)
             }
+            let response = try await directions.calculate()
+            guard !response.routes.isEmpty else { throw ToolInputError("No routes found.") }
+            return MapTrip.route(Trip(response))
+
         }
 
         Tool(
@@ -289,8 +264,8 @@ final class MapsService: NSObject, Service {
             )
         ) { arguments in
             guard let categoryString = arguments["category"]?.stringValue,
-                let latitude = arguments["latitude"]?.doubleValue,
-                let longitude = arguments["longitude"]?.doubleValue
+                let latitude = arguments["latitude"]?.numericValue,
+                let longitude = arguments["longitude"]?.numericValue
             else {
                 throw NSError(
                     domain: "MapsServiceError",
@@ -299,9 +274,14 @@ final class MapsService: NSObject, Service {
                 )
             }
 
-            let radius = arguments["radius"]?.doubleValue ?? defaultSearchRadius
+            let radius = arguments["radius"]?.numericValue ?? defaultSearchRadius
             let limit = arguments["limit"]?.intValue ?? defaultSearchLimit
 
+            guard CLLocationCoordinate2DIsValid(.init(latitude: latitude, longitude: longitude)),
+                radius > 0, radius <= MKLocalPointsOfInterestRequest.maxRadius, limit > 0
+            else {
+                throw ToolInputError("Invalid point-of-interest search radius or result limit.")
+            }
             guard let category = MKPointOfInterestCategory.from(string: categoryString) else {
                 throw NSError(
                     domain: "MapsServiceError",
@@ -406,32 +386,9 @@ final class MapsService: NSObject, Service {
                 directionsRequest.transportType = .automobile
             }
 
-            return try await withCheckedThrowingContinuation {
-                (continuation: CheckedContinuation<Trip, Error>) in
+            let response = try await MKDirections(request: directionsRequest).calculateETA()
+            return MapTrip.estimate(response, directionsRequest.transportType)
 
-                let directions = MKDirections(request: directionsRequest)
-                directions.calculateETA { response, error in
-                    if let error = error {
-                        continuation.resume(throwing: error)
-                        return
-                    }
-
-                    guard let response = response else {
-                        continuation.resume(
-                            throwing: NSError(
-                                domain: "MapsServiceError",
-                                code: 10,
-                                userInfo: [NSLocalizedDescriptionKey: "Could not calculate ETA"]
-                            )
-                        )
-                        return
-                    }
-
-                    let trip = Trip(response)
-
-                    continuation.resume(returning: trip)
-                }
-            }
         }
 
         Tool(
@@ -491,10 +448,10 @@ final class MapsService: NSObject, Service {
                 openWorldHint: true
             )
         ) { arguments in
-            guard let latitude = arguments["latitude"]?.doubleValue,
-                let longitude = arguments["longitude"]?.doubleValue,
-                let latitudeDelta = arguments["latitudeDelta"]?.doubleValue,
-                let longitudeDelta = arguments["longitudeDelta"]?.doubleValue
+            guard let latitude = arguments["latitude"]?.numericValue,
+                let longitude = arguments["longitude"]?.numericValue,
+                let latitudeDelta = arguments["latitudeDelta"]?.numericValue,
+                let longitudeDelta = arguments["longitudeDelta"]?.numericValue
             else {
                 throw NSError(
                     domain: "MapsServiceError",
@@ -506,6 +463,11 @@ final class MapsService: NSObject, Service {
                 )
             }
 
+            guard CLLocationCoordinate2DIsValid(.init(latitude: latitude, longitude: longitude)),
+                latitudeDelta > 0, latitudeDelta <= 180, longitudeDelta > 0, longitudeDelta <= 360
+            else {
+                throw ToolInputError("Invalid map region.")
+            }
             let width = arguments["width"]?.intValue ?? Int(defaultMapImageSize.width)
             let height = arguments["height"]?.intValue ?? Int(defaultMapImageSize.height)
             let mapTypeString = arguments["mapType"]?.stringValue ?? "standard"
@@ -649,5 +611,51 @@ final class MapsService: NSObject, Service {
                 ]
             )
         }
+    }
+}
+
+private enum MapTrip: Encodable {
+    case route(Trip)
+    case estimate(MKDirections.ETAResponse, MKDirectionsTransportType)
+
+    enum CodingKeys: String, CodingKey { case distanceMeters, travelTimeSeconds, mapsURL }
+
+    func encode(to encoder: Encoder) throws {
+        switch self {
+        case .route(let trip):
+            try trip.encode(to: encoder)
+        case .estimate(let response, let transport):
+            try encodeEstimate(response, transport: transport, to: encoder)
+        }
+    }
+
+    private func encodeEstimate(
+        _ response: MKDirections.ETAResponse,
+        transport: MKDirectionsTransportType,
+        to encoder: Encoder
+    ) throws {
+        try Trip(response).encode(to: encoder)
+        var fields = encoder.container(keyedBy: CodingKeys.self)
+        try fields.encode(response.distance, forKey: .distanceMeters)
+        try fields.encode(response.expectedTravelTime, forKey: .travelTimeSeconds)
+        let origin = response.source.placemark.coordinate
+        let destination = response.destination.placemark.coordinate
+        var url = URLComponents()
+        url.scheme = "https"
+        url.host = "maps.apple.com"
+        url.path = "/"
+        let flag: String
+        switch transport {
+        case .transit: flag = "r"
+        case .walking: flag = "w"
+        case .cycling: flag = "b"
+        default: flag = "d"
+        }
+        url.queryItems = [
+            .init(name: "saddr", value: "\(origin.latitude),\(origin.longitude)"),
+            .init(name: "daddr", value: "\(destination.latitude),\(destination.longitude)"),
+            .init(name: "dirflg", value: flag),
+        ]
+        try fields.encode(url.url, forKey: .mapsURL)
     }
 }

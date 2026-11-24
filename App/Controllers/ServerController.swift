@@ -814,7 +814,7 @@ actor MCPConnectionManager {
             version: Bundle.main.shortVersionString ?? "unknown",
             instructions: """
                 Use iMCP for apps and data on the user's Mac: \
-                Calendar, Contacts, Location, Mail, Maps, Messages, Music, Notes, Phone, Reminders, Shortcuts, Voice Memos, Voicemail, Weather, \
+                Calendar, Contacts, HomeKit, Location, Mail, Maps, Messages, Music, Notes, Phone, Reminders, Shortcuts, Voice Memos, Voicemail, Weather, \
                 and the camera, microphone, and screen. \
                 Only the services that the user turns on in iMCP have tools.
                 """,
@@ -973,6 +973,7 @@ actor ServerNetworkManager {
     private var isRunningState: Bool = false
     private var isEnabledState: Bool = true
     private var listener: LocalSocketListener?
+    private var socketDirectoryWatcher: DispatchSourceFileSystemObject?
     private var listenerRetryTask: Task<Void, Never>?
     /// The last reason that listening failed, so that each reason is reported once.
     private var listenerFailure: String?
@@ -1029,32 +1030,45 @@ actor ServerNetworkManager {
         log.info("Starting network manager")
         isRunningState = true
 
-        // Keep trying while another copy of iMCP holds the socket,
-        // and listen again if the socket file is removed or replaced.
-        listenerRetryTask?.cancel()
-        listenerRetryTask = Task {
-            while !Task.isCancelled, self.isRunningState {
-                self.checkListener()
-                try? await Task.sleep(for: .seconds(10))
-            }
-        }
+        checkListener()
     }
 
-    /// Listens if the app doesn't, or if its socket file is no longer at its path.
-    ///
-    /// Clients connect by path, so a listener whose file was removed or replaced
-    /// gets no connections. Listening again replaces a file that another process put there,
-    /// unless a copy of iMCP listens on it.
+    /// Watch the directory entry so unlinking or replacing the socket restores the listener.
+    /// Only failed binds and unavailable file-system notifications require a timed retry.
     private func checkListener() {
-        if let listener {
-            guard !listener.isAtPath else { return }
-            log.notice(
-                "The socket file at \(listener.path, privacy: .public) was removed or replaced. Listening again."
-            )
+        guard isRunningState else { return }
+        if let listener, !listener.isAtPath {
+            socketDirectoryWatcher?.cancel()
+            socketDirectoryWatcher = nil
             listener.cancel()
             self.listener = nil
         }
-        startListening()
+        if listener == nil { startListening() }
+        if let listener, socketDirectoryWatcher == nil {
+            let directory = URL(fileURLWithPath: listener.path).deletingLastPathComponent()
+            let fd = open(directory.path, O_EVTONLY | O_CLOEXEC)
+            if fd >= 0 {
+                let watch = DispatchSource.makeFileSystemObjectSource(
+                    fileDescriptor: fd,
+                    eventMask: [.write, .rename, .delete, .revoke],
+                    queue: .global(qos: .utility)
+                )
+                watch.setEventHandler { [weak self] in Task { await self?.checkListener() } }
+                watch.setCancelHandler { close(fd) }
+                socketDirectoryWatcher = watch
+                watch.activate()
+                // Cover a path replacement between binding and activating the watcher.
+                if !listener.isAtPath { Task { self.checkListener() } }
+            }
+        }
+        listenerRetryTask?.cancel()
+        listenerRetryTask = nil
+        if listener == nil || socketDirectoryWatcher == nil {
+            listenerRetryTask = Task {
+                do { try await Task.sleep(for: .seconds(10)) } catch { return }
+                self.checkListener()
+            }
+        }
     }
 
     private func startListening() {
@@ -1111,6 +1125,8 @@ actor ServerNetworkManager {
 
         listenerRetryTask?.cancel()
         listenerRetryTask = nil
+        socketDirectoryWatcher?.cancel()
+        socketDirectoryWatcher = nil
         listener?.cancel()
         listener = nil
         listenerFailure = nil

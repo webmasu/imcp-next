@@ -54,7 +54,7 @@ and a [growing list of clients][mcp-clients] that support the
       <img src="Assets/maps.svg" width="48" height="48" alt="" role="presentation"/>
     </th>
     <td><strong>Maps</strong></td>
-    <td>Search places and address suggestions, calculate distance, request driving, walking or cycling directions and travel times, and generate map images.</td>
+    <td>Search places and address suggestions, calculate distance, request driving, walking or cycling directions and transit estimates with departure, arrival, distance and a route link, and generate map images.</td>
   </tr>
   <tr>
     <th width="48">
@@ -143,7 +143,7 @@ Scripts/install-imsg-connection.sh
 open .build/Build/Products/Release/iMCP.app
 ```
 
-You can copy the built app to `~/Applications/iMCP Next.app`. Use the copy's **Copy server command to clipboard** button when configuring a client. The fork has its own socket, client approvals and settings. For connection options, see [Messages via imsg](#messages-via-imsg).
+You can copy the built app to `~/Applications/iMCP Next.app`. Use the copy's **Copy server command to clipboard** button when configuring a client. The proxy starts the signed app in the background on first connection. The fork has its own socket, client approvals and settings. For connection options, see [Messages via imsg](#messages-via-imsg).
 
 <img align="right" width="344" src="/Assets/imcp-screenshot-first-launch.png" alt="Screenshot of the iMCP menu, with the Enable MCP Server switch at the top and a list of services below it" />
 
@@ -307,8 +307,10 @@ detailed shortcut metadata can prompt for macOS Automation permission.
 
 The schedule is stored locally. iMCP checks due messages while running with the
 server, Mail service, `mail_send` and `mail_schedule` enabled. It picks up overdue
-messages after launch or wake. Use `mail_scheduled_list` to see status and
-`mail_scheduled_cancel` to cancel a pending entry. An accepted entry means Mail
+messages after launch or wake. Use `mail_mark` with `id` or `ids` to change read status.
+Filter the queue with `mail_scheduled_list(status:)`. Cancel pending entries by
+`id`, `ids`, or explicit `status: "pending"` with `mail_scheduled_cancel`.
+Use `mail_scheduled_delete` with an ID, IDs or a finished status to clear history. An accepted entry means Mail
 accepted the send request. If the result is unconfirmed, check Mail before resending.
 
 Mail store access uses [Envelope](https://github.com/mattt/Envelope),
@@ -800,8 +802,8 @@ so iMCP's release build doesn't include the helper.
 Build and install it with your own Apple Developer account:
 
 ```console
-git clone https://github.com/mattt/iMCP.git
-cd iMCP
+git clone https://github.com/webmasu/imcp-next.git
+cd imcp-next
 Scripts/install-helper.sh
 ```
 
@@ -811,7 +813,7 @@ Run it with `--help` to choose another team, bundle ID, or install directory.
 Xcode must be signed in to your account (Xcode > Settings > Accounts),
 and the helper runs only on Macs registered to your team.
 Whether free personal teams can use HomeKit isn't verified.
-Then turn on Home in iMCP.
+Then turn on Home in iMCP Next. From Codex, call `homes_list` to check the connection. When it returns several homes, pass a returned home ID to `rooms_list` or `accessories_list`.
 iMCP finds the helper in `/Applications`.
 If you installed it somewhere else,
 iMCP asks you to choose it when you turn on Home,
@@ -827,7 +829,7 @@ then paste the code and click Pair.
 The button opens the URL `imcp-next://pair`, which carries no data;
 iMCP only opens its pairing window for it.
 The helper opens that URL only with the app that has iMCP's bundle ID, `io.webmasu.iMCP`,
-preferring the running copy, and not with a copy that doesn't declare the `imcp` scheme;
+preferring the running copy, and not with a copy that doesn't declare the `imcp-next` scheme;
 otherwise, for example if you built iMCP with another bundle ID,
 the helper tells you to choose Pair… in Settings > Home instead.
 If the helper's window is behind other windows,

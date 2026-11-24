@@ -1,3 +1,5 @@
+import AppKit
+import Security
 import Darwin
 import Foundation
 import Logging
@@ -58,6 +60,11 @@ actor MCPService: Service {
                 // Report once while the app isn't running, then keep trying quietly.
                 if !hasReportedUnavailable {
                     hasReportedUnavailable = true
+                    if error.code == ENOENT || error.code == ECONNREFUSED {
+                        do { try await Self.launchAppIfNeeded() } catch {
+                            await log.error("Could not launch iMCP: \(error)")
+                        }
+                    }
                     await log.error(
                         "Couldn't connect to iMCP: \(error). Check that iMCP is open and that its server is turned on."
                     )
@@ -70,4 +77,26 @@ actor MCPService: Service {
             }
         }
     }
+    /// Prefer the app that contains this CLI. A standalone install resolves the registered fork.
+    @MainActor
+    private static func launchAppIfNeeded() async throws {
+        let id = CodeRequirement.appSigningIdentifier
+        guard NSRunningApplication.runningApplications(withBundleIdentifier: id).isEmpty else { return }
+        let enclosing = Bundle.main.executableURL?.resolvingSymlinksInPath()
+            .deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()
+        let url =
+            enclosing.flatMap { Bundle(url: $0)?.bundleIdentifier == id ? $0 : nil }
+            ?? NSWorkspace.shared.urlForApplication(withBundleIdentifier: id)
+        guard let url else { throw CocoaError(.fileNoSuchFile) }
+        let requirement = try CodeRequirement.compile(CodeRequirement.server)
+        var code: SecStaticCode?
+        let status = SecStaticCodeCreateWithPath(url as CFURL, [], &code)
+        guard status == errSecSuccess, let code else { throw CodeRequirement.Error.noSuchCode(status) }
+        let validity = SecStaticCodeCheckValidity(code, [], requirement)
+        guard validity == errSecSuccess else { throw CodeRequirement.Error.rejected(validity) }
+        let config = NSWorkspace.OpenConfiguration()
+        config.activates = false
+        _ = try await NSWorkspace.shared.openApplication(at: url, configuration: config)
+    }
+
 }

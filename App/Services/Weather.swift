@@ -41,18 +41,8 @@ final class WeatherService: Service {
                 openWorldHint: true
             )
         ) { arguments in
-            guard case let .double(latitude) = arguments["latitude"],
-                case let .double(longitude) = arguments["longitude"]
-            else {
-                log.error("Invalid coordinates")
-                throw NSError(
-                    domain: "WeatherServiceError",
-                    code: 1,
-                    userInfo: [NSLocalizedDescriptionKey: "Invalid coordinates"]
-                )
-            }
+            let location = try arguments.location()
 
-            let location = CLLocation(latitude: latitude, longitude: longitude)
             let currentWeather = try await self.weatherService.weather(
                 for: location,
                 including: .current
@@ -84,16 +74,7 @@ final class WeatherService: Service {
                 openWorldHint: true
             )
         ) { arguments in
-            guard case let .double(latitude) = arguments["latitude"],
-                case let .double(longitude) = arguments["longitude"]
-            else {
-                log.error("Invalid coordinates")
-                throw NSError(
-                    domain: "WeatherServiceError",
-                    code: 1,
-                    userInfo: [NSLocalizedDescriptionKey: "Invalid coordinates"]
-                )
-            }
+            let location = try arguments.location()
 
             var days: Int = 7
             if case let .int(daysRequested) = arguments["days"] {
@@ -103,7 +84,6 @@ final class WeatherService: Service {
             }
             days = days.clamped(to: 1 ... 10)
 
-            let location = CLLocation(latitude: latitude, longitude: longitude)
             let dailyForecast = try await self.weatherService.weather(
                 for: location,
                 including: .daily
@@ -138,16 +118,7 @@ final class WeatherService: Service {
                 openWorldHint: true
             )
         ) { arguments in
-            guard case let .double(latitude) = arguments["latitude"],
-                case let .double(longitude) = arguments["longitude"]
-            else {
-                log.error("Invalid coordinates")
-                throw NSError(
-                    domain: "WeatherServiceError",
-                    code: 1,
-                    userInfo: [NSLocalizedDescriptionKey: "Invalid coordinates"]
-                )
-            }
+            let location = try arguments.location()
 
             let hours: Int
             switch arguments["hours"] {
@@ -159,7 +130,6 @@ final class WeatherService: Service {
                 hours = 24
             }
 
-            let location = CLLocation(latitude: latitude, longitude: longitude)
             let hourlyForecasts = try await self.weatherService.weather(
                 for: location,
                 including: .hourly
@@ -194,16 +164,7 @@ final class WeatherService: Service {
                 openWorldHint: true
             )
         ) { arguments in
-            guard case let .double(latitude) = arguments["latitude"],
-                case let .double(longitude) = arguments["longitude"]
-            else {
-                log.error("Invalid coordinates")
-                throw NSError(
-                    domain: "WeatherServiceError",
-                    code: 1,
-                    userInfo: [NSLocalizedDescriptionKey: "Invalid coordinates"]
-                )
-            }
+            let location = try arguments.location()
 
             var minutes: Int = 60
             if case let .int(minutesRequested) = arguments["minutes"] {
@@ -213,7 +174,6 @@ final class WeatherService: Service {
             }
             minutes = minutes.clamped(to: 1 ... 120)
 
-            let location = CLLocation(latitude: latitude, longitude: longitude)
             guard
                 let minuteByMinuteForecast = try await self.weatherService.weather(
                     for: location,

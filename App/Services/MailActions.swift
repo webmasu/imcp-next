@@ -84,10 +84,11 @@ extension MailService {
     var markMail: Tool {
         Tool(
             name: "mail_mark",
-            description: "Set one message’s read status by its mail_messages_search identifier.",
+            description:
+                "Set read status by id or ids from mail_messages_search. A batch reports the outcome per message.",
             inputSchema: .object(
-                properties: ["id": .string(), "isRead": .boolean()],
-                required: ["id", "isRead"],
+                properties: ["id": .string(), "ids": .array(items: .string()), "isRead": .boolean()],
+                required: ["isRead"],
                 additionalProperties: false
             ),
             annotations: .init(
@@ -97,61 +98,86 @@ extension MailService {
                 openWorldHint: false
             )
         ) { args in
-            guard let id = try Envelope.Message.Identifier(args.requiredText("id")),
-                let read = args["isRead"]?.boolValue
-            else {
-                throw ToolInputError("A valid message id and isRead are required.")
+            guard let read = args["isRead"]?.boolValue else { throw ToolInputError("isRead is required.") }
+            let ids = try args.selectedIDs().map { raw in
+                guard let id = Envelope.Message.Identifier(raw) else {
+                    throw ToolInputError("Invalid message id: \(raw)")
+                }
+                return id
             }
-            let (rfcID, accountID) = try await self.withStore { store in
+            // Resolve every stable identity in one snapshot before changing Mail.
+            let targets = try await self.withStore { store in
                 try await store.withSnapshot { snapshot in
-                    let record = try snapshot.record(for: id)
-                    let mailbox = try snapshot.mailboxes().first { $0.id.rowID == id.mailboxID }
-                    let header = record.messageID.flatMap {
-                        $0.contains("@") ? $0.trimmingCharacters(in: CharacterSet(charactersIn: "<>")) : nil
+                    let mailboxes = try snapshot.mailboxes()
+                    return try ids.map { id in
+                        let record = try snapshot.record(for: id)
+                        let mailbox = mailboxes.first { $0.id.rowID == id.mailboxID }
+                        let header = record.messageID.flatMap {
+                            $0.contains("@") ? $0.trimmingCharacters(in: CharacterSet(charactersIn: "<>")) : nil
+                        }
+                        guard header != nil || mailbox?.account != nil else {
+                            throw ToolInputError("Mail could not verify the account or message identity.")
+                        }
+                        return (id, header ?? "", mailbox?.account?.id ?? "")
                     }
-                    guard header != nil || mailbox?.account != nil else {
-                        throw ToolInputError("Mail could not verify the account or message identity.")
-                    }
-                    return (header, mailbox?.account?.id)
                 }
             }
-            _ = try await NSAppleScript.execute(
-                """
-                on locateMessage(boxes, rowNumber, headerID, newFlag)
-                    tell application id "com.apple.mail"
-                        repeat with boxRef in boxes
-                            set foundMessages to (messages of boxRef whose id is rowNumber)
-                            if (count of foundMessages) is 1 then
-                                set m to item 1 of foundMessages
-                                if headerID is not "" and message id of m is not headerID then error "Message identity changed."
-                                set read status of m to newFlag
-                                return true
-                            end if
-                            if my locateMessage(mailboxes of boxRef, rowNumber, headerID, newFlag) then return true
-                        end repeat
-                    end tell
-                    return false
-                end locateMessage
-
-                on performtask(rowText, headerID, flagText, accountID)
-                    set num to rowText as integer
-                    tell application id "com.apple.mail"
-                        repeat with acct in accounts
-                            if accountID is "" or id of acct is accountID then
-                                if my locateMessage(mailboxes of acct, num, headerID, flagText is "true") then return true
-                            end if
-                        end repeat
-                        if headerID is not "" then
-                            if my locateMessage(mailboxes, num, headerID, flagText is "true") then return true
-                        end if
-                    end tell
-                    error "The message is no longer available in Mail."
-                end performtask
-                """,
-                arguments: [String(id.rowID), rfcID ?? "", String(read), accountID ?? ""]
-            )
-            return true
+            var outcomes: [Value] = []
+            for (id, header, account) in targets {
+                try Task.checkCancellation()
+                do {
+                    try await Self.setRead(read, row: String(id.rowID), header: header, account: account)
+                    outcomes.append(.object(["id": .string(id.description), "updated": true]))
+                } catch {
+                    if args["ids"] == nil { throw error }
+                    outcomes.append(
+                        .object([
+                            "id": .string(id.description), "updated": false,
+                            "error": .string(error.localizedDescription),
+                        ])
+                    )
+                }
+            }
+            return args["ids"] == nil ? Value.bool(true) : .array(outcomes)
         }
+    }
+
+    private static func setRead(_ read: Bool, row: String, header: String, account: String) async throws {
+        _ = try await NSAppleScript.execute(
+            """
+            on locateMessage(boxes, rowNumber, headerID, newFlag)
+                tell application id "com.apple.mail"
+                    repeat with boxRef in boxes
+                        set foundMessages to (messages of boxRef whose id is rowNumber)
+                        if (count of foundMessages) is 1 then
+                            set m to item 1 of foundMessages
+                            if headerID is not "" and message id of m is not headerID then error "Message identity changed."
+                            set read status of m to newFlag
+                            return true
+                        end if
+                        if my locateMessage(mailboxes of boxRef, rowNumber, headerID, newFlag) then return true
+                    end repeat
+                end tell
+                return false
+            end locateMessage
+
+            on performtask(rowText, headerID, flagText, accountID)
+                set num to rowText as integer
+                tell application id "com.apple.mail"
+                    repeat with acct in accounts
+                        if accountID is "" or id of acct is accountID then
+                            if my locateMessage(mailboxes of acct, num, headerID, flagText is "true") then return true
+                        end if
+                    end repeat
+                    if headerID is not "" then
+                        if my locateMessage(mailboxes, num, headerID, flagText is "true") then return true
+                    end if
+                end tell
+                error "The message is no longer available in Mail."
+            end performtask
+            """,
+            arguments: [row, header, String(read), account]
+        )
     }
 
     var readThread: Tool {

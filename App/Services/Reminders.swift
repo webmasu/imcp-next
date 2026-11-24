@@ -79,8 +79,7 @@ let recurrenceSchema: JSONSchema = .anyOf([
                 properties: [
                     "date": .string(
                         description:
-                            "Date of the last occurrence (inclusive; a date-only value includes that whole day)",
-                        format: .dateTime
+                            "Date of the last occurrence (inclusive; a date-only value includes that whole day)"
                     ),
                     "count": .integer(
                         description: "Total number of occurrences",
@@ -115,16 +114,14 @@ private let reminderProperties: OrderedDictionary<String, JSONSchema> = [
     "start": .anyOf([
         .string(
             description:
-                "Start date/time for the reminder. If timezone is omitted, local time is assumed. Date-only uses local midnight. Pass null to clear.",
-            format: .dateTime
+                "Start date/time for the reminder. If timezone is omitted, local time is assumed. A date without a time stays untimed. Pass null to clear."
         ),
         .null,
     ]),
     "due": .anyOf([
         .string(
             description:
-                "Due date/time for the reminder. If timezone is omitted, local time is assumed. Date-only uses local midnight. Pass null to clear.",
-            format: .dateTime
+                "Due date/time for the reminder. If timezone is omitted, local time is assumed. A date without a time stays untimed. Pass null to clear."
         ),
         .null,
     ]),
@@ -168,8 +165,7 @@ private let reminderProperties: OrderedDictionary<String, JSONSchema> = [
                         ),
                         "datetime": .string(
                             description:
-                                "Alarm date/time. If timezone is omitted, local time is assumed.",
-                            format: .dateTime
+                                "Alarm date/time. If timezone is omitted, local time is assumed."
                         ),
                         "sound": .string(
                             description: "Sound name to play when alarm triggers",
@@ -318,13 +314,11 @@ final class RemindersService: Service {
                     ),
                     "start": .string(
                         description:
-                            "Start date/time range for fetching reminders. If timezone is omitted, local time is assumed. Date-only uses local midnight.",
-                        format: .dateTime
+                            "Start of the due-date range for reminders. If timezone is omitted, local time is assumed. Date-only uses local midnight."
                     ),
                     "end": .string(
                         description:
-                            "End date/time range for fetching reminders. If timezone is omitted, local time is assumed. A date-only value includes that whole day.",
-                        format: .dateTime
+                            "End of the due-date range for reminders. If timezone is omitted, local time is assumed. A date-only value includes that whole day."
                     ),
                     "lists": .array(
                         description:
@@ -365,74 +359,38 @@ final class RemindersService: Service {
                 }
             }
 
-            // Parse dates if provided
-            var startDate: Date? = nil
-            var endDate: Date? = nil
-            var startIsDateOnly = false
-            var endIsDateOnly = false
-
-            if case .string(let start) = arguments["start"],
-                let parsedStart = ISO8601DateFormatter.parsedLenientISO8601Date(
-                    fromISO8601String: start
-                )
-            {
-                startDate = parsedStart.date
-                startIsDateOnly = parsedStart.isDateOnly
-            }
-            if case .string(let end) = arguments["end"],
-                let parsedEnd = ISO8601DateFormatter.parsedLenientISO8601Date(
-                    fromISO8601String: end
-                )
-            {
-                endDate = parsedEnd.date
-                endIsDateOnly = parsedEnd.isDateOnly
-            }
-
-            let calendar = Calendar.current
-            if let startDateValue = startDate {
-                startDate = calendar.normalizedStartDate(
-                    from: startDateValue,
-                    isDateOnly: startIsDateOnly
-                )
-            }
-            if let endDateValue = endDate {
-                endDate = calendar.normalizedEndDate(from: endDateValue, isDateOnly: endIsDateOnly)
-            }
-
-            // Choose predicates based on completion status: completed reminders match by
-            // completion date and incomplete ones by due date.
-            let completedPredicate = self.eventStore.predicateForCompletedReminders(
-                withCompletionDateStarting: startDate,
-                ending: endDate,
-                calendars: reminderLists
-            )
-            let incompletePredicate = self.eventStore.predicateForIncompleteReminders(
-                withDueDateStarting: startDate,
-                ending: endDate,
-                calendars: reminderLists
-            )
-            let predicates: [NSPredicate]
-            if case .bool(let completed) = arguments["completed"] {
-                predicates = [completed ? completedPredicate : incompletePredicate]
-            } else if startDate != nil || endDate != nil {
-                // Without a completion status, a date range applies to both kinds.
-                predicates = [incompletePredicate, completedPredicate]
-            } else {
-                predicates = [self.eventStore.predicateForReminders(in: reminderLists)]
-            }
-
-            // Fetch reminders
-            var reminders: [EKReminder] = []
-            for predicate in predicates {
-                reminders += try await withCheckedThrowingContinuation { continuation in
-                    self.eventStore.fetchReminders(matching: predicate) { fetchedReminders in
-                        continuation.resume(returning: fetchedReminders ?? [])
-                    }
+            func bound(_ key: String) throws -> (date: Date, isDateOnly: Bool)? {
+                guard let text = try arguments.optionalText(key) else { return nil }
+                guard let parsed = ISO8601DateFormatter.parsedLenientISO8601Date(fromISO8601String: text) else {
+                    throw ToolInputError("Invalid ISO 8601 date for \(key).")
                 }
+                return parsed
             }
-
-            // Apply additional filters
-            var filteredReminders = reminders
+            let start = try bound("start")
+            let end = try bound("end")
+            let calendar = Calendar.current
+            let startDate = start.map { calendar.normalizedStartDate(from: $0.date, isDateOnly: $0.isDateOnly) }
+            let endDate = end.map { calendar.normalizedEndDate(from: $0.date, isDateOnly: $0.isDateOnly) }
+            if let startDate, let endDate, startDate > endDate {
+                throw ToolInputError("The end of the range precedes its start.")
+            }
+            let predicate = self.eventStore.predicateForReminders(in: reminderLists)
+            let reminders: [EKReminder]? = await withCheckedContinuation { continuation in
+                self.eventStore.fetchReminders(matching: predicate) { continuation.resume(returning: $0) }
+            }
+            guard let reminders else { throw ToolInputError("Could not read reminders.") }
+            var filteredReminders = reminders.filter { reminder in
+                if let completed = arguments["completed"]?.boolValue, reminder.isCompleted != completed { return false }
+                guard startDate != nil || endDate != nil else { return true }
+                guard let parts = reminder.dueDateComponents,
+                    let due = (parts.calendar ?? calendar).date(from: parts)
+                else { return false }
+                if let startDate, due < startDate { return false }
+                if let endDate {
+                    return end?.isDateOnly == true ? due < endDate : due <= endDate
+                }
+                return true
+            }
 
             // Filter by search text if provided
             if case .string(let searchText) = arguments["query"],
@@ -884,7 +842,7 @@ final class RemindersService: Service {
         Tool(
             name: "reminders_lists_delete",
             description:
-                "Delete a reminder list and every reminder it contains. This cannot be undone. Either identifier or name is required.",
+                "Delete a reminder list by identifier or name. If it contains reminders, ask the user to confirm deletion before retrying with confirm=true.",
             inputSchema: .object(
                 properties: [
                     "identifier": .string(
@@ -894,6 +852,9 @@ final class RemindersService: Service {
                     "name": .string(
                         description:
                             "Name of the reminder list to delete, used when identifier is omitted"
+                    ),
+                    "confirm": .boolean(
+                        description: "User explicitly confirmed deleting this list and all its reminders."
                     ),
                 ],
                 additionalProperties: false
@@ -915,7 +876,7 @@ final class RemindersService: Service {
                 )
             }
 
-            try Self.rejectUnknownKeys(arguments, allowed: ["identifier", "name"])
+            try Self.rejectUnknownKeys(arguments, allowed: ["identifier", "name", "confirm"])
             let list = try self.list(arguments)
 
             guard list.allowsContentModifications, !list.isImmutable, !list.isSubscribed else {
@@ -929,6 +890,15 @@ final class RemindersService: Service {
                 )
             }
 
+            if arguments["confirm"] != .bool(true) {
+                let predicate = self.eventStore.predicateForReminders(in: [list])
+                let count: Int? = await withCheckedContinuation { continuation in
+                    self.eventStore.fetchReminders(matching: predicate) { reminders in
+                        continuation.resume(returning: reminders?.count)
+                    }
+                }
+                try Self.checkUnconfirmedDeletion(count: count, listName: list.title)
+            }
             try self.eventStore.removeCalendar(list, commit: true)
 
             return Value.object([
@@ -938,12 +908,21 @@ final class RemindersService: Service {
         }
     }
 
+    static func checkUnconfirmedDeletion(count: Int?, listName: String) throws {
+        guard let count else { throw ToolInputError("Could not check the contents of this list.") }
+        guard count == 0 else {
+            throw ToolInputError(
+                "List \"\(listName)\" contains \(count) reminders. Ask for confirmation before retrying with confirm=true."
+            )
+        }
+    }
+
     /// Applies optional properties from tool arguments to a reminder.
     /// A `null` value clears the corresponding property. Everything is
     /// parsed and validated before the reminder is touched: EventKit retains
     /// unsaved mutations in its shared store, so an error halfway through
     /// would otherwise be committed by the next successful save.
-    private func apply(_ arguments: [String: Value], to reminder: EKReminder) async throws {
+    func apply(_ arguments: [String: Value], to reminder: EKReminder) async throws {
         let newTitle: PropertyChange<String>
         switch arguments["title"] {
         case nil: newTitle = .absent
@@ -1215,6 +1194,11 @@ final class RemindersService: Service {
             : try JSONDecoder().decode(Value.self, from: encoder.encode(PlanAction(reminder)))
         guard case .object(var fields) = base else { return base }
 
+        if let parts = reminder.dueDateComponents, parts.hour == nil,
+            let year = parts.year, let month = parts.month, let day = parts.day
+        {
+            fields["scheduledTime"] = .string(String(format: "%04d-%02d-%02d", year, month, day))
+        }
         if let completionDate = reminder.completionDate {
             fields["completedAt"] = .string(Self.iso8601String(completionDate))
         }
@@ -1404,7 +1388,8 @@ final class RemindersService: Service {
             if hasDate {
                 guard case .string(let dateString)? = endConfig["date"],
                     let parsedDate = ISO8601DateFormatter.parsedLenientISO8601Date(
-                        fromISO8601String: dateString
+                        fromISO8601String: dateString,
+                        timeZone: timeZone
                     )
                 else {
                     throw NSError(
@@ -1602,7 +1587,7 @@ final class RemindersService: Service {
     }
 
     /// Parses an ISO 8601 date string into due/start date components,
-    /// normalizing date-only values to local midnight.
+    /// preserving the absence of a time for date-only values.
     private static func dateComponents(
         fromDateString dateString: String,
         description: String
@@ -1623,14 +1608,10 @@ final class RemindersService: Service {
         }
 
         let calendar = Calendar.current
-        let date = calendar.normalizedStartDate(
-            from: parsedDate.date,
-            isDateOnly: parsedDate.isDateOnly
-        )
-        return calendar.dateComponents(
-            [.year, .month, .day, .hour, .minute, .second],
-            from: date
-        )
+        let fields: Set<Calendar.Component> =
+            parsedDate.isDateOnly
+            ? [.year, .month, .day] : [.year, .month, .day, .hour, .minute, .second]
+        return calendar.dateComponents(fields, from: parsedDate.date)
     }
 
     /// An alarm configuration that has passed validation.

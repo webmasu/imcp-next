@@ -25,6 +25,30 @@ final class MailTests: XCTestCase {
         XCTAssertEqual(rows.first { $0["id"] == pending }?["status"], "unconfirmed")
     }
 
+    func testScheduleBatchFiltersAndHistoryProtection() async throws {
+        let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let queue = MailSchedule(directory: directory)
+        let mail = try OutgoingMail(["to": ["test@example.org"], "subject": "Fixture", "body": "Body"])
+        let due = Date.now.addingTimeInterval(3600)
+        let first = try await queue.enqueue(mail, at: due)
+        let second = try await queue.enqueue(mail, at: due)
+        let protected = try await queue.change(["ids": [.string(first), .string(second)]], delete: true)
+        XCTAssertTrue(protected.isEmpty)
+        for args: [String: Value] in [[:], ["ids": []], ["status": "pending", "id": .string(first)]] {
+            do {
+                _ = try await queue.change(args, delete: false)
+                XCTFail("Accepted an invalid selector")
+            } catch {}
+        }
+        let changed = try await queue.change(["ids": [.string(first), .string(second)]], delete: false)
+        XCTAssertEqual(Set(changed), [first, second])
+        let pending = try await queue.list(status: "pending")
+        XCTAssertTrue(pending.isEmpty)
+        let removed = try await queue.change(["status": "cancelled"], delete: true)
+        XCTAssertEqual(Set(removed), [first, second])
+    }
+
     func testPackageErrorsPreserveToolGuidance() throws {
         XCTAssertThrowsError(try MailService.shared.mailboxID(from: "INBOX")) { error in
             let description = String(describing: MailToolError(underlying: error))

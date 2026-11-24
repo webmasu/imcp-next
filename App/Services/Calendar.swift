@@ -65,13 +65,11 @@ final class CalendarService: Service {
                 properties: [
                     "start": .string(
                         description:
-                            "Start date/time (defaults to now; if end is date-only and start is omitted, uses end's local midnight). If timezone is omitted, local time is assumed.",
-                        format: .dateTime
+                            "Start date/time (defaults to now; if end is date-only and start is omitted, uses end's local midnight). If timezone is omitted, local time is assumed."
                     ),
                     "end": .string(
                         description:
-                            "End date/time (defaults to one week from start; one day if start is date-only). If timezone is omitted, local time is assumed. A date-only value includes that whole day.",
-                        format: .dateTime
+                            "End date/time (defaults to one week from start; one day if start is date-only). If timezone is omitted, local time is assumed. A date-only value includes that whole day."
                     ),
                     "calendars": .array(
                         description:
@@ -131,7 +129,7 @@ final class CalendarService: Service {
             var startIsDateOnly = false
             var endIsDateOnly = false
 
-            if case .string(let start) = arguments["start"] {
+            if let start = try arguments.optionalText("start") {
                 guard
                     let parsedStart = ISO8601DateFormatter.parsedLenientISO8601Date(
                         fromISO8601String: start
@@ -151,11 +149,10 @@ final class CalendarService: Service {
                 startIsDateOnly = parsedStart.isDateOnly
             }
 
-            if case .string(let end) = arguments["end"],
-                let parsedEnd = ISO8601DateFormatter.parsedLenientISO8601Date(
-                    fromISO8601String: end
-                )
-            {
+            if let end = try arguments.optionalText("end") {
+                guard let parsedEnd = ISO8601DateFormatter.parsedLenientISO8601Date(fromISO8601String: end) else {
+                    throw ToolInputError("Invalid end date format. Expected ISO 8601.")
+                }
                 hasEnd = true
                 endDate = parsedEnd.date
                 endIsDateOnly = parsedEnd.isDateOnly
@@ -242,13 +239,11 @@ final class CalendarService: Service {
                     "title": .string(),
                     "start": .string(
                         description:
-                            "Start date/time for the event. If timezone is omitted, local time is assumed. Date-only uses local midnight.",
-                        format: .dateTime
+                            "Start date or date-time. An explicit offset takes precedence over timeZone."
                     ),
                     "end": .string(
                         description:
-                            "End date/time for the event. If timezone is omitted, local time is assumed. Date-only uses local midnight.",
-                        format: .dateTime
+                            "End date or date-time. An explicit offset takes precedence over timeZone."
                     ),
                     "calendar": .string(
                         description: "Calendar to use (uses default if not specified)"
@@ -257,6 +252,10 @@ final class CalendarService: Service {
                     "notes": .string(),
                     "url": .string(
                         format: .uri
+                    ),
+                    "timeZone": .string(
+                        description:
+                            "IANA event time zone, e.g. America/New_York. Applies to times without an explicit offset."
                     ),
                     "isAllDay": .boolean(
                         default: false
@@ -299,8 +298,7 @@ final class CalendarService: Service {
                                         ),
                                         "datetime": .string(
                                             description:
-                                                "Alarm date/time. If timezone is omitted, local time is assumed. Date-only uses local midnight.",
-                                            format: .dateTime
+                                                "Alarm date/time. If timezone is omitted, local time is assumed. Date-only uses local midnight."
                                         ),
                                         "sound": .string(
                                             description: "Sound name to play when alarm triggers",
@@ -386,14 +384,19 @@ final class CalendarService: Service {
             }
             event.title = title
 
+            let zone = try Self.requestedTimeZone(arguments)
+            var eventCalendar = Calendar.current
+            eventCalendar.timeZone = zone ?? .current
             // Parse dates
             guard case .string(let startDateStr) = arguments["start"],
                 let parsedStart = ISO8601DateFormatter.parsedLenientISO8601Date(
-                    fromISO8601String: startDateStr
+                    fromISO8601String: startDateStr,
+                    timeZone: eventCalendar.timeZone
                 ),
                 case .string(let endDateStr) = arguments["end"],
                 let parsedEnd = ISO8601DateFormatter.parsedLenientISO8601Date(
-                    fromISO8601String: endDateStr
+                    fromISO8601String: endDateStr,
+                    timeZone: eventCalendar.timeZone
                 )
             else {
                 throw NSError(
@@ -406,7 +409,7 @@ final class CalendarService: Service {
                 )
             }
 
-            let calendar = Calendar.current
+            let calendar = eventCalendar
             let startDate = calendar.normalizedStartDate(
                 from: parsedStart.date,
                 isDateOnly: parsedStart.isDateOnly
@@ -416,6 +419,8 @@ final class CalendarService: Service {
                 isDateOnly: parsedEnd.isDateOnly
             )
 
+            guard endDate >= startDate else { throw ToolInputError("End date precedes start date.") }
+            if let zone { event.timeZone = zone }
             // For all-day events, ensure we use local midnight
             if case .bool(true) = arguments["isAllDay"] {
                 var startComponents = calendar.dateComponents(
@@ -526,7 +531,7 @@ final class CalendarService: Service {
                 }
             }
             if let rule = arguments["recurrence"] {
-                if !event.isAllDay { event.timeZone = .current }
+                if !event.isAllDay { event.timeZone = eventCalendar.timeZone }
                 event.recurrenceRules = try Self.rules(rule, timeZone: event.timeZone ?? .current)
             }
             try self.eventStore.save(event, span: .thisEvent)
@@ -692,13 +697,11 @@ final class CalendarService: Service {
                     ]),
                     "start": .string(
                         description:
-                            "New start date/time for the event. If timezone is omitted, local time is assumed. Date-only uses local midnight.",
-                        format: .dateTime
+                            "New start date/time for the event. If timezone is omitted, local time is assumed. Date-only uses local midnight."
                     ),
                     "end": .string(
                         description:
-                            "New end date/time for the event. If timezone is omitted, local time is assumed. Date-only uses local midnight.",
-                        format: .dateTime
+                            "New end date/time for the event. If timezone is omitted, local time is assumed. Date-only uses local midnight."
                     ),
                     "recurrence": recurrenceSchema,
                     "occurrence": .string(
@@ -724,6 +727,10 @@ final class CalendarService: Service {
                         ),
                         .null,
                     ]),
+                    "timeZone": .string(
+                        description:
+                            "IANA event time zone, e.g. America/New_York. Applies to times without an explicit offset."
+                    ),
                     "isAllDay": .boolean(
                         description: "Whether the event spans the whole day"
                     ),
@@ -765,8 +772,7 @@ final class CalendarService: Service {
                                         ),
                                         "datetime": .string(
                                             description:
-                                                "Alarm date/time. If timezone is omitted, local time is assumed. Date-only uses local midnight.",
-                                            format: .dateTime
+                                                "Alarm date/time. If timezone is omitted, local time is assumed. Date-only uses local midnight."
                                         ),
                                         "sound": .string(
                                             description: "Sound name to play when alarm triggers",
@@ -975,13 +981,17 @@ final class CalendarService: Service {
             // unsaved mutations in its shared store, so an error thrown
             // halfway through would otherwise be committed by the next
             // successful save of anything.
+            let zone = try Self.requestedTimeZone(arguments)
+            var eventCalendar = Calendar.current
+            eventCalendar.timeZone = zone ?? event.timeZone ?? .current
             var newStartDate: Date? = nil
             switch arguments["start"] {
             case nil: break
             case .string(let startDateString):
                 guard
                     let parsedStart = ISO8601DateFormatter.parsedLenientISO8601Date(
-                        fromISO8601String: startDateString
+                        fromISO8601String: startDateString,
+                        timeZone: eventCalendar.timeZone
                     )
                 else {
                     throw NSError(
@@ -993,7 +1003,7 @@ final class CalendarService: Service {
                         ]
                     )
                 }
-                newStartDate = Calendar.current.normalizedStartDate(
+                newStartDate = eventCalendar.normalizedStartDate(
                     from: parsedStart.date,
                     isDateOnly: parsedStart.isDateOnly
                 )
@@ -1014,7 +1024,8 @@ final class CalendarService: Service {
             case .string(let endDateString):
                 guard
                     let parsedEnd = ISO8601DateFormatter.parsedLenientISO8601Date(
-                        fromISO8601String: endDateString
+                        fromISO8601String: endDateString,
+                        timeZone: eventCalendar.timeZone
                     )
                 else {
                     throw NSError(
@@ -1026,7 +1037,7 @@ final class CalendarService: Service {
                         ]
                     )
                 }
-                newEndDate = Calendar.current.normalizedStartDate(
+                newEndDate = eventCalendar.normalizedStartDate(
                     from: parsedEnd.date,
                     isDateOnly: parsedEnd.isDateOnly
                 )
@@ -1181,9 +1192,10 @@ final class CalendarService: Service {
                 guard !event.isDetached, !event.hasRecurrenceRules || span == .futureEvents else {
                     throw ToolInputError("To edit the series rule select a regular occurrence and span futureEvents.")
                 }
-                event.recurrenceRules = try Self.rules(value, timeZone: event.timeZone ?? .current)
+                event.recurrenceRules = try Self.rules(value, timeZone: eventCalendar.timeZone)
             }
 
+            if let zone { event.timeZone = zone }
             if case .string(let title) = arguments["title"] {
                 event.title = title
             } else if case .null = arguments["title"] {
@@ -1235,7 +1247,7 @@ final class CalendarService: Service {
                 effectiveIsAllDay = event.isAllDay
             }
             if effectiveIsAllDay {
-                let calendar = Calendar.current
+                let calendar = eventCalendar
                 var startComponents = calendar.dateComponents(
                     [.year, .month, .day],
                     from: event.startDate
@@ -1280,6 +1292,12 @@ final class CalendarService: Service {
 
     /// inputSchema is advertised, not enforced: a present value of any
     /// other shape is rejected rather than treated as omitted.
+    static func requestedTimeZone(_ arguments: [String: Value]) throws -> TimeZone? {
+        guard let name = try arguments.optionalText("timeZone") else { return nil }
+        guard let zone = TimeZone(identifier: name) else { throw ToolInputError("Unknown time zone: \(name).") }
+        return zone
+    }
+
     private static func validateStringOrNull(_ value: Value?, name: String) throws {
         switch value {
         case nil, .string, .null: return

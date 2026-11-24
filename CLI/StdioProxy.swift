@@ -10,6 +10,7 @@ actor StdioProxy {
     private let channel: DispatchIO
     private let queue = DispatchQueue(label: "me.mattt.iMCP.server.socket")
     private let stdinBufferSize: Int
+    private var stdinReadiness: DispatchSourceRead?
     private var isRunning = false
 
     /// Whether the proxy has read anything from stdin.
@@ -70,7 +71,7 @@ actor StdioProxy {
 
             // Wait for either task to finish or fail.
             // Closing the channel ends a pending socket read,
-            // and cancellation ends the stdin loop's sleep.
+            // and cancelling the readiness source releases the stdin reader.
             let firstError: (any Swift.Error)?
             do {
                 try await group.next()
@@ -89,6 +90,7 @@ actor StdioProxy {
     /// Stops the proxy and closes the socket.
     func stop() async {
         isRunning = false
+        stdinReadiness?.cancel()
         channel.close(flags: .stop)
     }
 
@@ -117,6 +119,18 @@ actor StdioProxy {
         }
     }
 
+    private func waitForStdin(_ fd: Int32) async {
+        guard isRunning else { return }
+        await withCheckedContinuation { continuation in
+            let source = DispatchSource.makeReadSource(fileDescriptor: fd, queue: queue)
+            source.setEventHandler { source.cancel() }
+            source.setCancelHandler { continuation.resume() }
+            stdinReadiness = source
+            source.activate()
+        }
+        stdinReadiness = nil
+    }
+
     private func handleStdinToSocket(bufferSize: Int) async throws {
         let stdin = FileDescriptor.standardInput
         try setNonBlocking(fileDescriptor: stdin)
@@ -136,7 +150,7 @@ actor StdioProxy {
                     try stdin.read(into: UnsafeMutableRawBufferPointer(pointer))
                 }
             } catch let error as Errno where error == .wouldBlock {
-                try await Task.sleep(for: .milliseconds(10))
+                await waitForStdin(stdin.rawValue)
                 continue
             }
 

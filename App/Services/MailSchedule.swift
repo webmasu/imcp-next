@@ -7,6 +7,7 @@ import SQLite3
 actor MailSchedule {
     static let shared = MailSchedule()
     private let directory: URL
+    private let changes = AsyncStream<Void>.makeStream(bufferingPolicy: .bufferingNewest(1))
     private let log = Logger.service("mail-schedule")
 
     init(directory: URL? = nil) {
@@ -26,11 +27,19 @@ actor MailSchedule {
             [id, String(date.timeIntervalSince1970), payload, mail.subject],
             create: true
         )
+        changes.continuation.yield(())
         return id
     }
 
-    func list() throws -> [[String: String]] {
-        try query("SELECT id, due, status, subject, detail FROM schedule ORDER BY due, id").map { row in
+    static let statuses = ["pending", "cancelled", "accepted", "unconfirmed"]
+
+    func list(status: String? = nil) throws -> [[String: String]] {
+        if let status, !Self.statuses.contains(status) { throw ToolInputError("Unknown schedule status.") }
+        let filter = status == nil ? "" : " WHERE status=?"
+        return try query(
+            "SELECT id, due, status, subject, detail FROM schedule" + filter + " ORDER BY due, id",
+            status.map { [$0] } ?? []
+        ).map { row in
             [
                 "id": row[0], "scheduledTime": Date(timeIntervalSince1970: Double(row[1]) ?? 0).formatted(.iso8601),
                 "status": row[2], "subject": row[3], "detail": row[4],
@@ -39,21 +48,66 @@ actor MailSchedule {
     }
 
     func cancel(_ id: String) throws {
-        let rows = try query(
-            "UPDATE schedule SET status='cancelled', payload=NULL WHERE id=? AND status='pending' RETURNING id",
-            [id]
-        )
-        guard rows.count == 1 else { throw ToolInputError("No pending message with this id.") }
+        _ = try change(["id": .string(id)], delete: false)
+    }
+
+    /// A single SQLite statement selects and changes only eligible records, even if delivery races it.
+    func change(_ args: [String: Value], delete: Bool) throws -> [String] {
+        let filter: String
+        let parameters: [String]
+        if let status = try args.optionalText("status") {
+            guard args["id"] == nil, args["ids"] == nil,
+                (delete ? ["cancelled", "accepted", "unconfirmed"].contains(status) : status == "pending")
+            else { throw ToolInputError("Choose one eligible status or explicit ids.") }
+            filter = "status=?"
+            parameters = [status]
+        } else {
+            parameters = try args.selectedIDs()
+            filter = "id IN (" + Array(repeating: "?", count: parameters.count).joined(separator: ",") + ")"
+        }
+        let operation =
+            delete
+            ? "DELETE FROM schedule WHERE status!='pending' AND payload IS NULL"
+            : "UPDATE schedule SET status='cancelled', payload=NULL WHERE status='pending'"
+        let rows = try query(operation + " AND " + filter + " RETURNING id", parameters)
+        if args["id"] != nil, rows.isEmpty { throw ToolInputError("No eligible scheduled message with this id.") }
+        if !rows.isEmpty { changes.continuation.yield(()) }
+        return rows.map { $0[0] }
     }
 
     func run() async {
-        while !Task.isCancelled {
+        let signal = changes.continuation
+        let observer = NotificationCenter.default.addObserver(
+            forName: UserDefaults.didChangeNotification,
+            object: nil,
+            queue: nil
+        ) { _ in signal.yield(()) }
+        let timer = DispatchSource.makeTimerSource()
+        timer.setEventHandler { signal.yield(()) }
+        timer.activate()
+        defer {
+            timer.cancel()
+            NotificationCenter.default.removeObserver(observer)
+        }
+        signal.yield(())
+        for await _ in changes.stream {
+            timer.schedule(wallDeadline: .distantFuture)
+            guard Self.deliveryEnabled() else { continue }
             do {
                 while Self.deliveryEnabled(), try await deliverNext() { try Task.checkCancellation() }
+                if let due = try query("SELECT MIN(due) FROM schedule WHERE status='pending'").first?.first.flatMap(
+                    Double.init
+                ),
+                    Self.deliveryEnabled()
+                {
+                    // A wall-clock deadline also fires for overdue mail after system sleep.
+                    let deadline = timespec(tv_sec: Int(due.rounded(.up)), tv_nsec: 0)
+                    timer.schedule(wallDeadline: DispatchWallTime(timespec: deadline))
+                }
             } catch is CancellationError { return } catch {
                 log.error("Scheduled mail processing failed: \(error.localizedDescription)")
+                timer.schedule(wallDeadline: .now() + .seconds(15))
             }
-            do { try await Task.sleep(for: .seconds(15)) } catch { return }
         }
     }
 
@@ -142,9 +196,9 @@ extension MailService {
             annotations: .init(title: "Schedule Mail", destructiveHint: true, openWorldHint: true)
         ) { args in
             let time = try args.requiredText("scheduledTime")
-            let formatter = ISO8601DateFormatter()
-            formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
-            guard let date = formatter.date(from: time) ?? ISO8601DateFormatter().date(from: time) else {
+            guard time.count > 10, time.dropFirst(10).contains(where: { "Zz+-".contains($0) }),
+                let date = ISO8601DateFormatter.lenientDate(fromISO8601String: time)
+            else {
                 throw ToolInputError("Use an ISO 8601 timestamp with an explicit offset.")
             }
             let id = try await MailSchedule.shared.enqueue(OutgoingMail(args), at: date)
@@ -156,22 +210,46 @@ extension MailService {
         Tool(
             name: "mail_scheduled_list",
             description: "List pending, cancelled, accepted and unconfirmed scheduled messages.",
-            inputSchema: .object(properties: [:], additionalProperties: false),
+            inputSchema: .object(
+                properties: ["status": .string(enum: MailSchedule.statuses.map { .string($0) })],
+                additionalProperties: false
+            ),
             annotations: .init(title: "List Scheduled Mail", readOnlyHint: true, openWorldHint: false)
-        ) { _ in
-            try await MailSchedule.shared.list()
+        ) { args in
+            try await MailSchedule.shared.list(status: args.optionalText("status"))
         }
     }
 
     var cancelScheduledMail: Tool {
-        Tool(
-            name: "mail_scheduled_cancel",
-            description: "Cancel one pending message by its schedule id.",
-            inputSchema: .object(properties: ["id": .string()], required: ["id"], additionalProperties: false),
-            annotations: .init(title: "Cancel Scheduled Mail", destructiveHint: true, openWorldHint: false)
+        scheduledChange(delete: false)
+    }
+
+    var deleteScheduledMail: Tool {
+        scheduledChange(delete: true)
+    }
+
+    private func scheduledChange(delete: Bool) -> Tool {
+        let statuses = delete ? ["cancelled", "accepted", "unconfirmed"] : ["pending"]
+        return Tool(
+            name: delete ? "mail_scheduled_delete" : "mail_scheduled_cancel",
+            description: delete
+                ? "Delete finished schedule history by id, ids or status. Pending and in-flight records are protected."
+                : "Cancel pending mail by id, ids or explicit pending status. A batch returns affected ids.",
+            inputSchema: .object(
+                properties: [
+                    "id": .string(), "ids": .array(items: .string()),
+                    "status": .string(enum: statuses.map { .string($0) }),
+                ],
+                additionalProperties: false
+            ),
+            annotations: .init(
+                title: delete ? "Delete Mail Schedule History" : "Cancel Scheduled Mail",
+                destructiveHint: true,
+                openWorldHint: false
+            )
         ) { args in
-            try await MailSchedule.shared.cancel(args.requiredText("id"))
-            return true
+            let ids = try await MailSchedule.shared.change(args, delete: delete)
+            return !delete && args["id"] != nil ? Value.bool(true) : .array(ids.map(Value.string))
         }
     }
 }

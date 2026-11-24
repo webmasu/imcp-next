@@ -8,6 +8,16 @@ struct ToolInputError: LocalizedError, CustomStringConvertible {
     var errorDescription: String? { description }
 }
 
+extension MCP.Value {
+    var numericValue: Double? {
+        switch self {
+        case .int(let value): Double(value)
+        case .double(let value) where value.isFinite: value
+        default: nil
+        }
+    }
+}
+
 extension Dictionary where Key == String, Value == MCP.Value {
     func optionalText(_ key: String) throws -> String? {
         guard let value = self[key] else { return nil }
@@ -22,13 +32,29 @@ extension Dictionary where Key == String, Value == MCP.Value {
         return text
     }
 
+    /// Accept the existing single-id form or an explicit, bounded batch.
+    func selectedIDs() throws -> [String] {
+        if self["ids"] == nil { return [try requiredText("id")] }
+        guard self["id"] == nil, let values = self["ids"]?.arrayValue,
+            (1 ... 500).contains(values.count)
+        else {
+            throw ToolInputError("Specify id or an array of 1 to 500 ids.")
+        }
+        var seen = Set<String>()
+        var ids: [String] = []
+        for value in values {
+            guard let id = value.stringValue, !id.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+                throw ToolInputError("Each id must be a nonempty string.")
+            }
+            if seen.insert(id).inserted { ids.append(id) }
+        }
+        return ids
+    }
+
     func location(latitude: String = "latitude", longitude: String = "longitude") throws -> CLLocation {
         func number(_ key: String) throws -> Double {
-            switch self[key] {
-            case .double(let n): return n
-            case .int(let n): return Double(n)
-            default: throw ToolInputError("\(key) must be a number.")
-            }
+            guard let value = self[key]?.numericValue else { throw ToolInputError("\(key) must be a number.") }
+            return value
         }
         let coordinate = try CLLocationCoordinate2D(latitude: number(latitude), longitude: number(longitude))
         guard CLLocationCoordinate2DIsValid(coordinate) else { throw ToolInputError("Invalid coordinates.") }
