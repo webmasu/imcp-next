@@ -36,7 +36,7 @@ def card(rows, books):
         part for part in (first["first"], first["middle"], first["last"]) if part)
     contact = {"id": first["id"], "name": name, "addressBook": books.get(first["book"], ""),
                "givenName": first["first"] or "", "familyName": first["last"] or "", "phones": [], "emails": []}
-    contact["tags"] = archived_value(first["tags"]) or []
+    contact["tags"] = tag_names(first["tags"])
     extra = {"fieldValue": [], "organization": [], "jobTitle": [], "address": [], "url": []}
     for row in itertools.chain([first], rows):
         if row["kind"] == 0 and row["attributes"]:
@@ -68,6 +68,35 @@ def fold(text):
     return unicodedata.normalize("NFC", text).casefold()
 
 
+def tag_names(blob):
+    tags = archived_value(blob)
+    if tags is None:
+        return []
+    if isinstance(tags, str):
+        return [tags]
+    if not isinstance(tags, list) or not all(isinstance(name, str) for name in tags):
+        raise ValueError("Unsupported BusyContacts tag archive")
+    return tags
+
+
+def assigned_tags(db, entity, books, address_book):
+    counts = {}
+    for blob, book in db.execute(
+        "SELECT ZTAGS,ZPARENTCONTAINERDIRECT FROM ZCOMMONDATA WHERE Z_ENT=? AND ZTAGS IS NOT NULL ORDER BY Z_PK",
+        (entity,)
+    ):
+        if address_book and fold(books.get(book, "")) != fold(address_book):
+            continue
+        seen = set()
+        for name in tag_names(blob):
+            key = fold(name)
+            if key and key not in seen:
+                seen.add(key)
+                entry = counts.setdefault(key, {"name": name, "contacts": 0})
+                entry["contacts"] += 1
+    return {"tags": [counts[key] for key in sorted(counts)]}
+
+
 def page(db, params):
     if not isinstance(params, dict) or params.keys() - {"query", "after", "limit", "tag", "addressBook", "field", "listTags"}:
         raise ValueError("Unknown search argument")
@@ -81,7 +110,6 @@ def page(db, params):
         raise ValueError("Unsupported search field")
     if any(not isinstance(params[k], str) or not params[k].strip() for k in ("tag", "addressBook") if k in params):
         raise ValueError("Tag and address book must be nonempty strings")
-    tag_counts = {}
     needle = fold(query.strip())
     digits = "".join(c for c in needle if c.isdecimal())
     number = digits if digits and all(c.isdecimal() or c in "+()- ./" for c in needle) else ""
@@ -91,6 +119,8 @@ def page(db, params):
         raise ValueError("Unsupported BusyContacts database schema")
     books = {r[0]: title(r[1]) for r in db.execute(
         "SELECT Z_PK, ZTITLE FROM ZCOMMONDATA WHERE Z_ENT=?", (entities["Book"],))}
+    if params.get("listTags"):
+        return assigned_tags(db, entities["Contact"], books, params.get("addressBook"))
     rows = db.execute("""
         SELECT c.Z_PK AS id, c.ZFIRSTNAME AS first, c.ZMIDDLENAME AS middle, c.ZLASTNAME AS last,
                c.ZTITLE AS title, c.ZLOCALTITLESEARCHTEXT AS indexed_name, c.ZPARENTCONTAINERDIRECT AS book,
@@ -105,10 +135,6 @@ def page(db, params):
     for _, group in itertools.groupby(rows, key=lambda row: row["id"]):
         item, extra, first = card(group, books)
         if "addressBook" in params and fold(params["addressBook"]) != fold(item["addressBook"]):
-            continue
-        if params.get("listTags"):
-            for tag in set(item["tags"]):
-                tag_counts[tag] = tag_counts.get(tag, 0) + 1
             continue
         if "tag" in params and fold(params["tag"]) not in map(fold, item["tags"]):
             continue
@@ -128,8 +154,6 @@ def page(db, params):
         if len(contacts) == limit:
             return {"contacts": contacts, "nextAfter": contacts[-1]["id"]}
         contacts.append(item)
-    if params.get("listTags"):
-        return {"tags": [{"name": name, "contacts": tag_counts[name]} for name in sorted(tag_counts, key=fold)]}
     return {"contacts": contacts, "nextAfter": None}
 
 

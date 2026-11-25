@@ -71,6 +71,10 @@ class BusyContactsTests(unittest.TestCase):
             page = busy.read(self.path, {"addressBook": "local book", "tag": "KUND", "field": field, "query": query})
             self.assertEqual([r["id"] for r in page["contacts"]], [3])
         self.assertFalse(busy.read(self.path, {"tag": "Kun", "query": "acme"})["contacts"])
+        archive["$objects"][2] = "kund"
+        self.writer.execute("UPDATE ZCOMMONDATA SET ZTAGS=? WHERE Z_PK=4", (plistlib.dumps(archive, fmt=plistlib.FMT_BINARY),))
+        self.writer.commit()
+        self.assertEqual(busy.read(self.path, {"listTags": True})["tags"], [{"name": "Kund", "contacts": 2}])
 
     def test_missing_database_is_not_created_and_invalid_input_fails(self):
         absent = self.path.with_name("absent")
