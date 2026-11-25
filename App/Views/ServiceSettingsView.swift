@@ -6,6 +6,7 @@ struct ServiceSettingsView: View {
     @ObservedObject var serverController: ServerController
     let config: ServiceConfig
 
+    @AppStorage(ImsgToolCatalog.changesKey) private var imsgChanges = false
     @AppStorage(BusyCalService.writesKey) private var busyCalAllowChanges = false
 
     var body: some View {
@@ -49,6 +50,11 @@ struct ServiceSettingsView: View {
 
             if config.service is MessageService {
                 ImsgSettingsSection()
+                Toggle("Allow Advanced Sends and Changes in Messages", isOn: $imsgChanges)
+                    .disabled(!isOn)
+                    .onChange(of: imsgChanges) { _, _ in
+                        Task { await serverController.updateServiceBindings() }
+                    }
             }
 
             if config.service is ShortcutsService { ShortcutFilesSection() }

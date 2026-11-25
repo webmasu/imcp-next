@@ -1,0 +1,83 @@
+#!/usr/bin/python3
+"""Read Contacts Journal CRM 7.2 contact history in one SQLite snapshot per request."""
+from contextlib import closing
+import json
+from pathlib import Path
+import sqlite3
+import sys
+import unicodedata
+
+STORE = (Path.home() / "Library/Group Containers/group.com.zaal.cjournalmacgroup"
+         / "ContactsJournalData/ContactsJournal.sqlite")
+
+
+def fold(value):
+    return unicodedata.normalize("NFC", value or "").casefold()
+
+
+def query(db, action, params):
+    limit, offset = params.get("limit", 50), params.get("offset", 0)
+    if type(limit) is not int or not 1 <= limit <= 100 or type(offset) is not int or not 0 <= offset < 2**63:
+        raise ValueError("Use limit 1 to 100 and a nonnegative offset.")
+    where_person = "coalesce(p.ZCLOUDKITREMOTELYDELETED,0)=0"
+    if action == "contacts":
+        needle = params.get("query", "")
+        if not isinstance(needle, str):
+            raise ValueError("query must be text")
+        sql = f"""SELECT p.Z_PK id, p.ZDISPLAYNAME name, p.ZCOMPANYNAME company,
+                         p.ZISCONTACTARCHIVED archived FROM ZPERSON p WHERE {where_person}
+                  AND (instr(fold(p.ZDISPLAYNAME),?) OR instr(fold(p.ZCOMPANYNAME),?))
+                  ORDER BY p.ZDISPLAYNAME COLLATE NOCASE,p.Z_PK"""
+        args = (fold(needle), fold(needle))
+    elif action in ("logs", "todos"):
+        person = params.get("contact_id")
+        if type(person) is not int or not 1 <= person < 2**63:
+            raise ValueError("Provide a contact_id from contactsjournal_contacts.")
+        if not db.execute(f"SELECT 1 FROM ZPERSON p WHERE p.Z_PK=? AND {where_person}", (person,)).fetchone():
+            raise ValueError("Contact no longer available.")
+        if action == "logs":
+            table, title, title_id, stamp = "ZLOG", "ZLOGTITLE", "ZTITLE", "ZLOGDATE"
+            join, person_col, record_col = "Z_32MULTIPLEPEOPLE", "Z_34MULTIPLEPEOPLE", "Z_32MULTILOGS"
+            note = "coalesce(nullif(r.ZLOGNOTEMARKDOWNTEXT,''),nullif(r.ZLOGNOTE,''),r.ZLOGSUMMARYTEXT)"
+            extra = ""
+        else:
+            table, title, title_id, stamp = "ZTODO", "ZTODOTITLE", "ZTODOTITLE", "ZTODOSTARTDATE"
+            join, person_col, record_col = "Z_34MULTITODOS", "Z_34MULTIPLEPEOPLE1", "Z_46MULTITODOS"
+            note = "coalesce(nullif(r.ZTODONOTEMARKDOWNTEXT,''),nullif(r.ZTODONOTE,''),r.ZTODOSUMMARYTEXT)"
+            extra = """, r.ZTODOSTATUS status, strftime('%Y-%m-%dT%H:%M:%SZ',r.ZTODOENDDATE+978307200,'unixepoch') end,
+                        strftime('%Y-%m-%dT%H:%M:%SZ',r.ZTODOCOMPLETEDDATE+978307200,'unixepoch') completed"""
+        only_open = action == "todos" and params.get("open_only", False)
+        if type(only_open) is not bool:
+            raise ValueError("open_only must be boolean")
+        completion = " AND r.ZTODOCOMPLETEDDATE IS NULL AND coalesce(r.ZTODOSTATUS,0)=0" if only_open else ""
+        sql = f"""SELECT r.Z_PK id,t.ZTITLE title,{note} note,
+                         strftime('%Y-%m-%dT%H:%M:%SZ',r.{stamp}+978307200,'unixepoch') date{extra}
+                  FROM {table} r LEFT JOIN {title} t ON t.Z_PK=r.{title_id}
+                  WHERE coalesce(r.ZCLOUDKITREMOTELYDELETED,0)=0{completion}
+                  AND (r.ZPERSON=? OR r.Z_PK IN (SELECT {record_col} FROM {join} WHERE {person_col}=?))
+                  ORDER BY r.{stamp} DESC,r.Z_PK DESC"""
+        args = (person, person)
+    else:
+        raise ValueError("Unknown Contacts Journal operation.")
+    rows = db.execute(sql + " LIMIT ? OFFSET ?", (*args, limit + 1, offset)).fetchall()
+    return {action: [dict(r) for r in rows[:limit]], "nextOffset": offset + limit if len(rows) > limit else None}
+
+
+def read(path, action, params):
+    with closing(sqlite3.connect(path.as_uri() + "?mode=ro", uri=True, timeout=2)) as db:
+        db.row_factory = sqlite3.Row
+        db.create_function("fold", 1, fold)
+        db.execute("PRAGMA query_only=ON")
+        db.execute("BEGIN")
+        return query(db, action, params)
+
+
+if __name__ == "__main__":
+    try:
+        response = {"result": read(STORE, sys.argv[1], json.load(sys.stdin))}
+    except (OSError, sqlite3.Error, ValueError, TypeError, IndexError) as exc:
+        detail = str(exc)
+        if "authorization denied" in detail or isinstance(exc, PermissionError):
+            detail = "macOS denied access to Contacts Journal app data. Allow iMCP Next to read this app’s data in Privacy & Security."
+        response = {"error": {"message": f"Cannot read Contacts Journal CRM: {detail}"}}
+    print(json.dumps(response))

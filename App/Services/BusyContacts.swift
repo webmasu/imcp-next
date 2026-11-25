@@ -13,10 +13,16 @@ final class BusyContactsService: Service {
         Tool(
             name: "busycontacts_list",
             description:
-                "Read cards from BusyContacts on this Mac. Search by name, email or phone, or omit query to list every address book's cards. Use nextAfter as after with the same query to continue.",
+                "Read cards from BusyContacts on this Mac. Search card fields, tags, notes or the BusyContacts search index, or omit query to list every address book's cards. Use nextAfter as after with the same query to continue.",
             inputSchema: .object(
                 properties: [
-                    "query": .string(description: "Name, email address or phone number"),
+                    "query": .string(description: "Case-insensitive substring"),
+                    "field": .string(enum: [
+                        "all", "name", "email", "phone", "tag", "note", "fieldValue", "organization", "jobTitle",
+                        "address", "url", "addressBook",
+                    ]),
+                    "tag": .string(description: "Exact tag, case-insensitive"),
+                    "addressBook": .string(description: "Exact address book, case-insensitive"),
                     "limit": .integer(
                         description: "Maximum cards per page",
                         default: .int(50),
@@ -29,6 +35,17 @@ final class BusyContactsService: Service {
             ),
             annotations: .init(title: "Find BusyContacts Cards", readOnlyHint: true, openWorldHint: false)
         ) { try await LocalScript.call("imcp-busycontacts", request: .object($0)) }
+
+        Tool(
+            name: "busycontacts_tags",
+            description: "List assigned BusyContacts tags and contact counts, optionally in one address book.",
+            inputSchema: .object(properties: ["addressBook": .string()], additionalProperties: false),
+            annotations: .init(title: "List BusyContacts Tags", readOnlyHint: true)
+        ) { args in
+            var request: [String: Value] = ["listTags": .bool(true)]
+            request["addressBook"] = args["addressBook"]
+            return try await LocalScript.call("imcp-busycontacts", request: .object(request))
+        }
 
         BusyContactTools.get
         BusyContactTools.photo

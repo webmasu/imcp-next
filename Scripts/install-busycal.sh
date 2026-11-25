@@ -2,8 +2,8 @@
 # Install the original BusyMac release locally; its license does not grant redistribution.
 set -eu
 umask 077
-version=1.2.3
-digest=d618b0f6637914ccbeb478b625a4642ce3c6f227c49272a3123e9691358b3336
+version=1.3.0
+digest=2672f0794f25e862144b20c8e6aaacc08b0e702f6d4beffd22d9339921585fa6
 package="BusyCalMCP-$version"
 dir="$HOME/Library/Application Scripts/io.webmasu.iMCP"
 mkdir -p "$dir"

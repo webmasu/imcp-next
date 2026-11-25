@@ -105,6 +105,9 @@ final class HomeKitBackend: HomeBackend {
         case "automations_update":
             let (_, trigger) = try store.trigger(args.required("automation"))
             let name = try args.optionalName()
+            if try await HomeTimerSchedule.update(trigger, arguments: args) {
+                return try Value(automationSummary(trigger))
+            }
             let enabled = try args.bool("enabled")
             if let name { try await trigger.updateName(name) }
             if let enabled { try await trigger.enable(enabled) }
@@ -287,17 +290,7 @@ final class HomeKitBackend: HomeBackend {
         }
         let trigger: HMTrigger
         if let fireAt = try triggerArgs.string("fire_at") {
-            guard
-                let date = ISO8601DateFormatter().date(from: fireAt)
-                    ?? ISO8601DateFormatter.fractional.date(from: fireAt), date > Date()
-            else {
-                throw HomeError("fire_at must be a future ISO 8601 timestamp with a time zone.")
-            }
-            guard date.timeIntervalSince1970.truncatingRemainder(dividingBy: 60) == 0 else {
-                throw HomeError(
-                    "fire_at must be on a whole-minute boundary (seconds and fractional seconds must be zero)."
-                )
-            }
+            let date = try HomeTimerSchedule.futureDate(fireAt)
             if let recurrence = object["recurrence"], case .array(let weekdays) = recurrence {
                 guard !weekdays.isEmpty else { throw HomeError("The weekday recurrence must not be empty.") }
                 let days = try weekdays.map { value -> DateComponents in
@@ -587,7 +580,7 @@ extension HomeKitBackend {
     }
 }
 
-private struct HomeArguments {
+struct HomeArguments {
     let input: [String: Value]
     init(_ input: [String: Value]) { self.input = input }
     func value(_ key: String) throws -> Value {
@@ -635,7 +628,7 @@ private struct HomeArguments {
 }
 
 extension ISO8601DateFormatter {
-    fileprivate static var fractional: ISO8601DateFormatter {
+    static var fractional: ISO8601DateFormatter {
         let formatter = ISO8601DateFormatter()
         formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
         return formatter

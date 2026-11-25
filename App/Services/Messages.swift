@@ -7,7 +7,9 @@ final class MessageService: Service {
     private let limit = JSONSchema.integer(description: "Maximum rows (1 to 100)", minimum: 1, maximum: 100)
     private let chatID = JSONSchema.integer(description: "Numeric chat ID from messages_chats", minimum: 1)
 
-    var tools: [Tool] {
+    var tools: [Tool] { return basicTools + ImsgToolCatalog.tools }
+
+    @ToolBuilder private var basicTools: [Tool] {
         Tool(
             name: "messages_chats",
             description: "List conversations via imsg. Use a returned chat ID to read its history.",
@@ -55,19 +57,23 @@ final class MessageService: Service {
         Tool(
             name: "messages_send",
             description:
-                "Send one text via imsg. Supply either to or chat_id. Check history after an uncertain result before sending again.",
+                "Send text, an attachment or both. Supply one recipient or chat selector. Check history after an uncertain result before sending again.",
             inputSchema: .object(
                 properties: [
                     "to": .string(description: "Recipient phone number or email"),
                     "chat_id": chatID,
                     "text": .string(description: "Message body"),
+                    "file": .string(
+                        description: "File on this Mac for imsg and imsg-vm, or on the remote Mac for SSH."
+                    ),
+                    "chat_identifier": .string(), "chat_guid": .string(), "region": .string(),
+                    "allow_sms_fallback": .boolean(),
                     "service": .string(description: "For a direct recipient: auto, imessage, or sms"),
                 ],
-                required: ["text"],
                 additionalProperties: false
             ),
             annotations: .init(
-                title: "Send Text",
+                title: "Send Text and Attachments",
                 readOnlyHint: false,
                 destructiveHint: false,
                 idempotentHint: false,

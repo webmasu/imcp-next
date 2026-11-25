@@ -1,6 +1,8 @@
 import importlib.machinery
 import importlib.util
 import json
+import os
+from unittest import mock
 from pathlib import Path
 import subprocess
 import sys
@@ -41,7 +43,7 @@ class ImsgConnectionTests(unittest.TestCase):
 
     def test_params_cannot_trigger_other_actions(self):
         for method, params in [
-            ("read", {}), ("send", {"to": "a", "file": "/tmp/a"}),
+            ("read", {}), ("send", {"to": "a", "file": []}),
             ("send", {"chat_id": 2, "to": "a", "text": "test"}),
             ("send", {"to": "x", "text": {"path": "/tmp/test"}}),
             ("messages.history", {}), ("chats.list", {"limit": True}),
@@ -49,6 +51,39 @@ class ImsgConnectionTests(unittest.TestCase):
         ]:
             with self.assertRaises(ValueError):
                 imsg.validate({"method": method, "params": params})
+
+    def test_catalog_binds_native_methods_and_preserves_cli_values(self):
+        ops = imsg.imsg_operations
+        catalog = json.loads((script.parents[2] / "App/Services/imsg-tools.json").read_text())
+        with mock.patch.object(ops, "catalog", return_value=catalog):
+            with self.assertRaises(ValueError):
+                ops.execute("account", {"native_params": {"method":"send"}}, "ssh", "vm", imsg.command, None, None)
+            rpc = mock.Mock()
+            ops.execute("after", {"native_params":{"since_rowid":10}}, "imsg-vm", "", imsg.command, rpc, None)
+            argv, request = rpc.call_args.args
+            self.assertEqual(argv[-2:], ["imsg-ro", "rpc"])
+            self.assertEqual(request["method"], "messages.after")
+            capture = mock.Mock(return_value=b'{"ok":true}')
+            ops.execute("poll_send", {"chat":"test", "option":["-a","b"], "question":"a b"}, "local",
+                        "/test", lambda *_: ["/test/imsg","rpc"], None, capture)
+            self.assertIn("--question=a b", capture.call_args.args[0])
+            self.assertIn("--option=-a", capture.call_args.args[0])
+
+    def test_attachment_export_checks_directory_and_symlinks(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            home = Path(tmp)
+            folder = home / "Library/Messages/Attachments"
+            folder.mkdir(parents=True)
+            sample = folder / "image.png"
+            sample.write_bytes(b"sample")
+            (folder / "alias").symlink_to(sample)
+            for path, ok in [(sample, True), (folder/"alias", False), (folder/".."/"Attachments"/"image.png", False)]:
+                child = subprocess.run([sys.executable, str(script.with_name("imsg_attachment.py"))],
+                                       input=json.dumps(str(path)).encode(), capture_output=True,
+                                       env={**os.environ,"HOME":tmp})
+                self.assertEqual(child.returncode == 0, ok)
+                if ok:
+                    self.assertEqual(child.stdout, b"sample")
 
     def test_send_round_trip_uses_only_a_fake_child(self):
         params = {"to": "test@example.invalid", "text": 'a\n"b" ' * 1800}

@@ -673,27 +673,31 @@ In **Settings > Messages**, select a connection, click **Test Connection**, then
 
 | Connection | Host configuration |
 | --- | --- |
-| imsg-vm (default) | Uses the host's `~/.local/bin/imsg-vm` launcher to find the guest and connect over SSH. Reads run `imsg-vm imsg-ro rpc`. Sending runs `imsg-vm imsg rpc`. |
+| imsg-vm (default) | Uses the host's `~/.local/bin/imsg-vm` launcher to find the guest and connect over SSH. Reads use `imsg-vm imsg-ro` and changes use `imsg-vm imsg`. Attachment export uses the same VM's SSH connection. |
 | imsg | Enter the absolute path to an imsg executable installed on this Mac. An empty field checks `/opt/homebrew/bin/imsg`, then `/usr/local/bin/imsg`. The executable runs `rpc` against this Mac's Messages database. Use imsg 0.21.1 for the full tool set documented below. |
 | SSH host | Enter a `Host` alias from the host Mac's `~/.ssh/config`. Configure its user, identity and known host key. iMCP uses noninteractive SSH and runs `/usr/local/bin/imsg rpc` in the guest. Test SSH access with `ssh -o BatchMode=yes -o IdentitiesOnly=yes -o StrictHostKeyChecking=yes YOUR_ALIAS /usr/local/bin/imsg --version`. |
 
-`Scripts/install-imsg-connection.sh` installs one executable in `~/Library/Application Scripts/io.webmasu.iMCP/`. The sandboxed app starts it on demand using `NSUserUnixTask`. It needs Python 3.8 or later at `/usr/bin/python3` on the host. There is no listener to start in the guest. Run the installer again after updating the script.
+`Scripts/install-imsg-connection.sh` installs the host helper and operation catalog in `~/Library/Application Scripts/io.webmasu.iMCP/`. The sandboxed app starts it on demand using `NSUserUnixTask`. It needs Python 3.8 or later at `/usr/bin/python3` on the host. There is no listener to start in the guest. Run the installer again after updating the script.
 
 | MCP tool | imsg RPC | Use |
 | --- | --- | --- |
 | `messages_chats` | `chats.list` | Find a numeric chat ID. Optionally list only unread conversations. |
 | `messages_history` | `messages.history` | Read one chat. Optional filters cover participants and dates. Set `attachments` to include metadata and paths on the selected Mac. |
 | `messages_search` | `messages.search` | Search across conversations by text. |
-| `messages_send` | `send` | Send text to one recipient or existing chat. Enable **Send Text** separately under Messages. |
+| `messages_send` | `send` | Send text, a file or both to one recipient or existing chat. Enable **Send Text and Attachments** under Messages. |
 
-Clients using upstream's `messages_fetch` should use the history and search tools above. Results follow the imsg JSON format. Attachment contents stay on the Mac running imsg. A send that loses its SSH connection can have reached Messages. Check the chat history before retrying.
+Use `messages_capabilities` to check the connected imsg version and its currently usable RPC methods. The operation catalog covers imsg 0.21.1 including accounts, groups, scheduled messages, statistics, read receipts, typing, polls, reactions, edits, stickers, multipart sends, contact sharing and group membership. Each tool with a native RPC equivalent also accepts its exact `native_params` object in place of the CLI fields. Use `messages_after` for resumable catch-up and `messages_watch` or `messages_events` for a bounded 1–30 second observation. Bridge availability depends on the selected Mac. Installation and bridge administration are local operations.
+
+The **Allow Advanced Sends and Changes in Messages** setting enables the additional mutating tools. Individual tools can then be turned off. A lost connection can follow a committed change. Read back the message or chat before retrying.
+
+To retrieve an image or document, call `messages_history` with `attachments: true`, then pass its `original_path` to `messages_attachment`. The tool copies a downloaded regular file up to 64 MiB into a private temporary folder on the host and returns its path. Remote export requires /usr/bin/python3 on the Messages Mac. Sending with imsg-vm accepts a host path through the wrapper's shared-folder staging. Plain SSH sends use paths on the remote Mac.
 
 ### BusyCal
 
 Run `Scripts/install-busycal.sh` on the Mac that runs BusyCal, then enable **BusyCal**
-in iMCP Next settings. The installer downloads BusyMac’s official MCP bundle 1.2.3,
+in iMCP Next settings. The installer downloads BusyMac’s official MCP bundle 1.3.0,
 verifies the release checksum and developer signature, and installs it locally. It
-requires BusyCal 2026.3.2 or later. For an offline install, pass the downloaded
+requires BusyCal 2026.4.7 beta or later for sub-tasks, bulk reads and overlap searches. For an offline install, pass the downloaded
 `.mcpb` file as the script’s only argument.
 
 The existing iMCP connection advertises the vendor’s tools with a `busycal_`
@@ -704,13 +708,18 @@ can also be switched off. Clients with a tool allowlist need the corresponding
 prefixed names. BusyCal remains responsible for calendar permissions and syncing.
 [BusyMac’s MCP guide](https://www.busymac.com/docs/busycal/70624-mcp/) · [Vendor release and license](https://github.com/BeehiveInnovations/busycal-mcpb)
 
+### Contacts Journal CRM
+
+Run `Scripts/install-contactsjournal.sh`, then enable **Contacts Journal CRM** in settings. Use `contactsjournal_contacts` to find a local CRM contact ID by name or company. Pass it to `contactsjournal_logs` or `contactsjournal_todos`. Both include entries shared with multiple contacts. Use `open_only: true` for pending follow-ups. Approve macOS access to Contacts Journal app data when prompted. Follow `nextOffset` to read another page. These tools open the local Contacts Journal CRM 7.2.1 SQLite store in read-only mode and include committed changes in its WAL.
+
 ### BusyContacts
 
-Run `Scripts/install-busycontacts.sh` on the host Mac, then turn on **Settings > BusyContacts** in iMCP Next. The **Create Contacts** and **Update Contacts** switches are independent and both default to off.
+Run `Scripts/install-busycontacts.sh` on the host Mac, then turn on **Settings > BusyContacts** in iMCP Next. Approve macOS access to BusyContacts app data when prompted. The **Create Contacts** and **Update Contacts** switches are independent and both default to off.
 
 | Tool | Use |
 | --- | --- |
-| `busycontacts_list` | Search all BusyContacts address books by name, email or phone. Omit the query to list everyone. Pass `nextAfter` as `after` with the same query to read the next page. |
+| `busycontacts_list` | Search names, emails, phones, organizations, job titles, postal addresses, URLs, tags, notes and other stored field values. Limit the search with `field`, or combine the exact `tag` and `addressBook` filters. Omit the query to list everyone. Pass `nextAfter` as `after` with the same query to read the next page. |
+| `busycontacts_tags` | List assigned tags and their contact counts, optionally in an address book. |
 | `busycontacts_get` | Read a person by numeric BusyContacts `id`. Returns a vCard, `hasPhoto`, a revision and the original BusyContacts field list in `busyContactsFields`, including custom labels and provider values. Set `includePhoto` to `false` to omit the image from the response. |
 | `busycontacts_photo` | Read the contact photo as an MCP image. Uses the BusyContacts cached original when available, with the macOS account photo as a fallback. |
 | `busycontacts_create` | Supply `details` and an optional `addressBook` for Quick Entry, or supply a complete `vcard`. For a vCard, BusyContacts opens its import dialog so you can choose the address book and confirm. A submitted request can be checked with `busycontacts_list`. |
@@ -836,6 +845,8 @@ Run it with `--help` to choose another team, bundle ID, or install directory.
 Xcode must be signed in to your account (Xcode > Settings > Accounts),
 and the helper runs only on Macs registered to your team.
 Whether free personal teams can use HomeKit isn't verified.
+To reschedule a time-based automation in place, use `automations_update`. For an ordinary timer, pass a future whole-minute ISO timestamp as `fire_at`. For a single calendar event, use its local `time` as HH:mm. Update `recurrence` separately. Regular timers accept daily or once, and calendar triggers accept daily or an array of weekdays (1 is Sunday). Scenes, conditions and unrelated triggers retain their existing settings.
+
 Then turn on Home in iMCP Next. From Codex, call `homes_list` to check the connection. When it returns several homes, pass a returned home ID to `rooms_list` or `accessories_list`.
 iMCP finds the helper in `/Applications`.
 If you installed it somewhere else,

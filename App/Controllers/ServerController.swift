@@ -55,6 +55,7 @@ enum ServiceRegistry {
             CalendarService.shared,
             CaptureService.shared,
             ContactsService.shared,
+            ContactsJournalService.shared,
             HomeService.shared,
             LocationService.shared,
             MapsService.shared,
@@ -78,6 +79,7 @@ enum ServiceRegistry {
     }()
 
     static func configureServices(
+        contactsJournalEnabled: Binding<Bool>,
         busyCalEnabled: Binding<Bool>,
         busyContactsEnabled: Binding<Bool>,
         calendarEnabled: Binding<Bool>,
@@ -139,6 +141,14 @@ enum ServiceRegistry {
                 color: .brown,
                 service: ContactsService.shared,
                 binding: contactsEnabled
+            ),
+            ServiceConfig(
+                name: "Contacts Journal CRM",
+                summary: "Find CRM contacts and read their journal entries and follow-ups.",
+                iconName: "person.text.rectangle",
+                color: .brown,
+                service: ContactsJournalService.shared,
+                binding: contactsJournalEnabled
             ),
             ServiceConfig(
                 name: "Home",
@@ -271,6 +281,7 @@ final class ServerController: ObservableObject {
     private let networkManager = ServerNetworkManager()
 
     // MARK: - AppStorage for Service Enablement States
+    @AppStorage("contactsJournalEnabled") private var contactsJournalEnabled = false
     @AppStorage("busyCalEnabled") private var busyCalEnabled = false
     @AppStorage("busyContactsEnabled") private var busyContactsEnabled = false
     @AppStorage("calendarEnabled") private var calendarEnabled = false
@@ -304,6 +315,7 @@ final class ServerController: ObservableObject {
     // MARK: - Computed Properties for Service Configurations and Bindings
     var computedServiceConfigs: [ServiceConfig] {
         ServiceRegistry.configureServices(
+            contactsJournalEnabled: $contactsJournalEnabled,
             busyCalEnabled: $busyCalEnabled,
             busyContactsEnabled: $busyContactsEnabled,
             calendarEnabled: $calendarEnabled,
@@ -826,7 +838,7 @@ actor MCPConnectionManager {
             version: Bundle.main.shortVersionString ?? "unknown",
             instructions: """
                 Use iMCP for apps and data on the user's Mac: \
-                BusyCal, Calendar, Contacts, HomeKit, Location, Mail, Maps, Messages, Music, Notes, Phone, Reminders, Shortcuts, Voice Memos, Voicemail, Weather, \
+                BusyCal, BusyContacts, Calendar, Contacts, Contacts Journal CRM, HomeKit, Location, Mail, Maps, Messages, Music, Notes, Phone, Reminders, Shortcuts, Voice Memos, Voicemail, Weather, \
                 and the camera, microphone, and screen. \
                 Only the services that the user turns on in iMCP have tools.
                 """,

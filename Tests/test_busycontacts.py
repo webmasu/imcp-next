@@ -30,9 +30,13 @@ class BusyContactsTests(unittest.TestCase):
             INSERT INTO ZCOMMONDATA VALUES(1,9,NULL,NULL,NULL,NULL,NULL,NULL),
                 (2,7,NULL,NULL,NULL,NULL,NULL,1),(3,7,'Åsa',NULL,'Test',NULL,NULL,1),
                 (4,7,'Åsa',NULL,'Test',NULL,NULL,1);
+            ALTER TABLE ZCOMMONDATA ADD COLUMN ZTAGS;
+            ALTER TABLE ZCOMMONDATA ADD COLUMN ZCONTENT;
+            ALTER TABLE ZCOMMONDATA ADD COLUMN ZLOCALSEARCHTEXT;
             CREATE TABLE ZEXTRADATA(Z_PK INTEGER PRIMARY KEY, Z_ENT, ZPARENTOBJECT, ZFIELDTYPE, ZFIELDSTRING, ZFIELDSORT);
             INSERT INTO ZEXTRADATA VALUES(10,17,3,18,'+46 (70) 123-4567',0),(11,17,3,4,'example@invalid.test',1);
         """)
+        self.writer.execute("ALTER TABLE ZEXTRADATA ADD COLUMN ZFIELDDICT")
         archive = {"$top": {"root": plistlib.UID(1)}, "$objects": ["$null", {"NSString": plistlib.UID(2)}, "Local book"]}
         self.writer.execute("UPDATE ZCOMMONDATA SET ZTITLE=? WHERE Z_PK=1",
                             (plistlib.dumps(archive, fmt=plistlib.FMT_BINARY),))
@@ -54,6 +58,19 @@ class BusyContactsTests(unittest.TestCase):
         self.assertEqual(first["nextAfter"], 3)
         self.assertIsNone(busy.read(self.path, {"query": "åsa", "after": 3})["nextAfter"])
         self.assertEqual(busy.read(self.path, {"query": "%_"})["contacts"], [])
+
+    def test_tags_and_extended_fields_can_be_combined(self):
+        archive = {"$top": {"root": plistlib.UID(1)}, "$objects": ["$null", {"NS.objects": [plistlib.UID(2)]}, "Kund"]}
+        self.writer.execute("UPDATE ZCOMMONDATA SET ZTAGS=? WHERE Z_PK=3", (plistlib.dumps(archive, fmt=plistlib.FMT_BINARY),))
+        self.writer.executemany("INSERT INTO ZEXTRADATA VALUES (?,17,3,?,?,0,?)", [
+            (12, 14, "Acme AB", None), (13, 19, "Projektör", None),
+            (14, 0, None, '"city" = "Örebro";'), (15, 21, "https://example.invalid", None)])
+        self.writer.commit()
+        self.assertEqual(busy.read(self.path, {"listTags": True})["tags"], [{"name": "Kund", "contacts": 1}])
+        for field, query in [("organization", "acme"), ("jobTitle", "projektör"), ("address", "örebro"), ("url", "example")]:
+            page = busy.read(self.path, {"addressBook": "local book", "tag": "KUND", "field": field, "query": query})
+            self.assertEqual([r["id"] for r in page["contacts"]], [3])
+        self.assertFalse(busy.read(self.path, {"tag": "Kun", "query": "acme"})["contacts"])
 
     def test_missing_database_is_not_created_and_invalid_input_fails(self):
         absent = self.path.with_name("absent")

@@ -10,6 +10,9 @@ import re
 import signal
 import sys
 
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+import imsg_operations
+
 MAX_REQUEST = 64 * 1024
 MAX_RESPONSE = 8 * 1024 * 1024
 METHODS = {
@@ -17,7 +20,7 @@ METHODS = {
     "chats.list": {"limit", "unread_only"},
     "messages.history": {"chat_id", "participants", "start", "end", "limit", "attachments"},
     "messages.search": {"query", "match", "limit"},
-    "send": {"to", "chat_id", "text", "service"},
+    "send": {"to", "chat_id", "chat_guid", "chat_identifier", "text", "file", "service", "region", "allow_sms_fallback"},
 }
 
 
@@ -29,7 +32,7 @@ def validate(request):
     for key, value in params.items():
         if key in {"limit", "chat_id"}:
             valid = type(value) is int and value > 0 and (key != "limit" or value <= 100)
-        elif key in {"attachments", "unread_only"}:
+        elif key in {"attachments", "unread_only", "allow_sms_fallback"}:
             valid = isinstance(value, bool)
         elif key == "participants":
             valid = isinstance(value, list) and all(isinstance(item, str) for item in value)
@@ -42,8 +45,8 @@ def validate(request):
     if method == "messages.search" and "query" not in params:
         raise ValueError("Search requires query")
     if method == "send":
-        if "text" not in params or ("to" in params) == ("chat_id" in params):
-            raise ValueError("Provide text and exactly one of to or chat_id")
+        if not ({"text", "file"} & params.keys()) or len({"to", "chat_id", "chat_guid", "chat_identifier"} & params.keys()) != 1:
+            raise ValueError("Provide text or file and exactly one recipient or chat selector")
         if "service" in params and ("to" not in params or params["service"] not in {"auto", "imessage", "sms"}):
             raise ValueError("service requires a direct recipient and must be auto, imessage, or sms")
     return {"jsonrpc": "2.0", "id": 1, "method": method, "params": params}
@@ -67,10 +70,10 @@ def command(mode, target, method):
             "-oIdentitiesOnly=yes", "-oConnectTimeout=8", "--", host, "/usr/local/bin/imsg rpc"]
 
 
-def exchange(argv, request, timeout=45):
+def capture(argv, data, timeout=45, maximum=MAX_RESPONSE, window=False, hold_input=False):
     # Keep all three pipes moving. SSH and the wrapper can both have descendants
     # holding a pipe open, even after the immediate child has exited.
-    payload = memoryview(json.dumps(request).encode() + b"\n")
+    payload = memoryview(data)
     stdout, stderr = bytearray(), bytearray()
     deadline = time.monotonic() + timeout
     with subprocess.Popen(argv, stdin=subprocess.PIPE, stdout=subprocess.PIPE,
@@ -83,6 +86,11 @@ def exchange(argv, request, timeout=45):
                 while selector.get_map():
                     events = selector.select(max(0, deadline - time.monotonic()))
                     if not events or time.monotonic() >= deadline:
+                        if window:
+                            os.killpg(proc.pid, signal.SIGKILL)
+                            proc.wait()
+                            # Only return complete JSON lines emitted within the window.
+                            return bytes(stdout[:stdout.rfind(b"\n") + 1])
                         raise TimeoutError()
                     for key, _ in events:
                         if key.fileobj is proc.stdin:
@@ -92,7 +100,8 @@ def exchange(argv, request, timeout=45):
                                 payload = b""
                             if not payload:
                                 selector.unregister(proc.stdin)
-                                proc.stdin.close()
+                                if not hold_input:
+                                    proc.stdin.close()
                         else:
                             chunk = os.read(key.fd, 65536)
                             if not chunk:
@@ -100,7 +109,7 @@ def exchange(argv, request, timeout=45):
                                 continue
                             buffer = stdout if key.fileobj is proc.stdout else stderr
                             buffer.extend(chunk)
-                            if len(buffer) > (MAX_RESPONSE if buffer is stdout else 65536):
+                            if len(buffer) > (maximum if buffer is stdout else 65536):
                                 raise ValueError("imsg output exceeded the size limit. Request fewer rows.")
             status = proc.wait(timeout=max(0, deadline - time.monotonic()))
         except BaseException:
@@ -112,7 +121,11 @@ def exchange(argv, request, timeout=45):
     if status != 0:
         detail = stderr.decode(errors="replace").strip()[-800:]
         raise ValueError(detail or f"imsg exited with status {status}")
-    reply = json.loads(stdout)
+    return bytes(stdout)
+
+
+def exchange(argv, request, timeout=45):
+    reply = json.loads(capture(argv, json.dumps(request).encode() + b"\n", timeout))
     if reply.get("jsonrpc") != "2.0" or type(reply.get("id")) is not int or reply["id"] != 1:
         raise ValueError("Unexpected imsg RPC response")
     if "error" in reply:
@@ -126,8 +139,12 @@ def main():
         line = sys.stdin.buffer.readline(MAX_REQUEST + 1)
         if len(line) > MAX_REQUEST:
             raise ValueError("Request exceeds 64 KiB")
-        request = validate(json.loads(line))
-        reply = exchange(command(mode, host, request["method"]), request)
+        raw = json.loads(line)
+        if raw["method"].startswith("catalog."):
+            reply = imsg_operations.execute(raw["method"][8:], raw["params"], mode, host, command, exchange, capture)
+        else:
+            request = validate(raw)
+            reply = exchange(command(mode, host, request["method"]), request)
     except (TimeoutError, subprocess.TimeoutExpired):
         reply = {"error": {"message": "imsg timed out. For a send, check history before retrying."}}
     except (OSError, ValueError, KeyError, TypeError, AttributeError) as exc:

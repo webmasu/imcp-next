@@ -228,8 +228,19 @@ enum HomeTools {
             ),
             tool(
                 "automations_update",
-                "Rename an automation or change whether it is enabled.",
-                ["automation": identifier, "name": .string(), "enabled": .boolean()],
+                "Rename or enable an automation. To reschedule, change one schedule field per call. Use fire_at for a timer, time for a time-of-day calendar event, or recurrence for either.",
+                [
+                    "automation": identifier, "name": .string(), "enabled": .boolean(),
+                    "fire_at": .string(
+                        description: "Next timer firing, future ISO 8601 whole minute.",
+                        format: .dateTime
+                    ),
+                    "time": .string(description: "Local time HH:mm for a single time-of-day calendar event."),
+                    "recurrence": .anyOf([
+                        .string(enum: ["daily", "once"]),
+                        .array(items: .integer(minimum: 1, maximum: 7), minItems: 1, uniqueItems: true),
+                    ]),
+                ],
                 required: ["automation"],
                 idempotent: true
             ),

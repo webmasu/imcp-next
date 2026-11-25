@@ -16,7 +16,7 @@ final class BusyCalService: Service, Sendable {
             if let cached { return cached }
             guard let scripts = FileManager.default.urls(for: .applicationScriptsDirectory, in: .userDomainMask).first,
                 FileManager.default.isExecutableFile(atPath: scripts.appendingPathComponent("imcp-busycal").path),
-                let data = try? Data(contentsOf: scripts.appendingPathComponent("BusyCalMCP-1.2.3/catalog.json")),
+                let data = try? Data(contentsOf: scripts.appendingPathComponent("BusyCalMCP-1.3.0/catalog.json")),
                 let upstream = try? JSONDecoder().decode([MCP.Tool].self, from: data), !upstream.isEmpty
             else { return [] }
             let tools = upstream.map { upstream in

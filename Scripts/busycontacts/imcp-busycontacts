@@ -5,9 +5,13 @@ import itertools
 import json
 from pathlib import Path
 import plistlib
+import re
 import sqlite3
 import sys
 import unicodedata
+
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+from card_details import archived_value
 
 
 DATABASE = Path.home() / "Library/Group Containers/N4RA379GBW.com.busymac.busycontacts/Data/BusyContacts.bsql"
@@ -32,12 +36,32 @@ def card(rows, books):
         part for part in (first["first"], first["middle"], first["last"]) if part)
     contact = {"id": first["id"], "name": name, "addressBook": books.get(first["book"], ""),
                "givenName": first["first"] or "", "familyName": first["last"] or "", "phones": [], "emails": []}
+    contact["tags"] = archived_value(first["tags"]) or []
+    extra = {"fieldValue": [], "organization": [], "jobTitle": [], "address": [], "url": []}
     for row in itertools.chain([first], rows):
+        if row["kind"] == 0 and row["attributes"]:
+            extra["address"].extend(address_values(row["attributes"]))
         if row["value"]:
-            values = contact["emails"] if row["kind"] == EMAIL else contact["phones"]
+            values = {EMAIL: contact["emails"], PHONE: contact["phones"]}.get(row["kind"], extra["fieldValue"])
             if row["value"] not in values:
                 values.append(row["value"])
-    return contact
+            specific = {14: "organization", 19: "jobTitle", 21: "url"}.get(row["kind"])
+            if specific:
+                extra[specific].append(row["value"])
+    return contact, extra, first
+
+
+# ZFIELDDICT holds OpenStep plist string pairs for each address component.
+ADDRESS_PAIR = re.compile(r'"(?:street|city|zip|state|country|countryCode|subLocality|subAdministrativeArea)"\s*=\s*"((?:\\.|[^"\\])*)"', re.S)
+ESCAPE = re.compile(r'\\(?:U([\da-fA-F]{4})|(.))', re.S)
+
+
+def address_values(attributes):
+    def unescape(match):
+        if match[1]:
+            return chr(int(match[1], 16))
+        return {"n": "\n", "r": "\r", "t": "\t"}.get(match[2], match[2])
+    return [ESCAPE.sub(unescape, value) for value in ADDRESS_PAIR.findall(attributes)]
 
 
 def fold(text):
@@ -45,13 +69,19 @@ def fold(text):
 
 
 def page(db, params):
-    if not isinstance(params, dict) or params.keys() - {"query", "after", "limit"}:
-        raise ValueError("Expected query, after or limit")
+    if not isinstance(params, dict) or params.keys() - {"query", "after", "limit", "tag", "addressBook", "field", "listTags"}:
+        raise ValueError("Unknown search argument")
     after, limit, query = params.get("after", 0), params.get("limit", 50), params.get("query", "")
     if type(after) is not int or not 0 <= after < 2**63 or type(limit) is not int or not 1 <= limit <= 100:
         raise ValueError("Use a nonnegative after cursor and a limit between 1 and 100")
     if not isinstance(query, str):
         raise ValueError("query must be text")
+    field = params.get("field", "all")
+    if field not in {"all", "name", "email", "phone", "tag", "note", "fieldValue", "addressBook", "organization", "jobTitle", "address", "url"}:
+        raise ValueError("Unsupported search field")
+    if any(not isinstance(params[k], str) or not params[k].strip() for k in ("tag", "addressBook") if k in params):
+        raise ValueError("Tag and address book must be nonempty strings")
+    tag_counts = {}
     needle = fold(query.strip())
     digits = "".join(c for c in needle if c.isdecimal())
     number = digits if digits and all(c.isdecimal() or c in "+()- ./" for c in needle) else ""
@@ -64,22 +94,42 @@ def page(db, params):
     rows = db.execute("""
         SELECT c.Z_PK AS id, c.ZFIRSTNAME AS first, c.ZMIDDLENAME AS middle, c.ZLASTNAME AS last,
                c.ZTITLE AS title, c.ZLOCALTITLESEARCHTEXT AS indexed_name, c.ZPARENTCONTAINERDIRECT AS book,
-               f.ZFIELDTYPE AS kind, f.ZFIELDSTRING AS value
+               c.ZTAGS AS tags, c.ZCONTENT AS note, c.ZLOCALSEARCHTEXT AS search_text,
+               f.ZFIELDTYPE AS kind, f.ZFIELDSTRING AS value, f.ZFIELDDICT AS attributes
         FROM ZCOMMONDATA c LEFT JOIN ZEXTRADATA f ON f.ZPARENTOBJECT=c.Z_PK
-             AND f.Z_ENT=? AND f.ZFIELDTYPE IN (?,?)
+             AND f.Z_ENT=?
         WHERE c.Z_ENT=? AND c.Z_PK>?
         ORDER BY c.Z_PK, f.ZFIELDSORT, f.Z_PK
-        """, (entities["FieldData"], EMAIL, PHONE, entities["Contact"], after))
+        """, (entities["FieldData"], entities["Contact"], after))
     contacts = []
     for _, group in itertools.groupby(rows, key=lambda row: row["id"]):
-        item = card(group, books)
-        fields = [item["name"], item["givenName"], item["familyName"], *item["emails"], *item["phones"]]
-        if needle and not any(needle in fold(value) for value in fields):
-            if not number or not any(number in "".join(c for c in phone if c.isdecimal()) for phone in item["phones"]):
-                continue
+        item, extra, first = card(group, books)
+        if "addressBook" in params and fold(params["addressBook"]) != fold(item["addressBook"]):
+            continue
+        if params.get("listTags"):
+            for tag in set(item["tags"]):
+                tag_counts[tag] = tag_counts.get(tag, 0) + 1
+            continue
+        if "tag" in params and fold(params["tag"]) not in map(fold, item["tags"]):
+            continue
+        if needle:
+            fields = {"name": [item["name"], item["givenName"], item["familyName"]],
+                      "email": item["emails"], "phone": item["phones"], "tag": item["tags"],
+                      "addressBook": [item["addressBook"]], **extra}
+            if field in ("note", "all"):
+                fields["note"] = [archived_value(first["note"]) or ""]
+            values = ([first["search_text"] or "", *itertools.chain.from_iterable(fields.values())]
+                      if field == "all" else fields[field])
+            if not any(needle in fold(v) for v in values):
+                if field not in ("all", "phone") or not number or not any(
+                    number in "".join(c for c in phone if c.isdecimal()) for phone in item["phones"]
+                ):
+                    continue
         if len(contacts) == limit:
             return {"contacts": contacts, "nextAfter": contacts[-1]["id"]}
         contacts.append(item)
+    if params.get("listTags"):
+        return {"tags": [{"name": name, "contacts": tag_counts[name]} for name in sorted(tag_counts, key=fold)]}
     return {"contacts": contacts, "nextAfter": None}
 
 
@@ -97,5 +147,8 @@ if __name__ == "__main__":
             raise ValueError("Request exceeds 64 KiB")
         response = {"result": read(DATABASE, json.loads(line))}
     except (sqlite3.Error, ValueError, OSError) as exc:
-        response = {"error": {"message": f"Cannot read BusyContacts: {exc}"}}
+        detail = str(exc)
+        if "authorization denied" in detail or isinstance(exc, PermissionError):
+            detail = "macOS denied access to BusyContacts app data. Allow iMCP Next to read this app’s data in Privacy & Security."
+        response = {"error": {"message": f"Cannot read BusyContacts: {detail}"}}
     print(json.dumps(response, ensure_ascii=False))

@@ -40,6 +40,13 @@ final class HomeToolsTests: XCTestCase {
         )
     }
 
+    func testTimerUpdateSchemaAcceptsScheduleChanges() throws {
+        try validate("automations_update", ["automation": "id", "time": "22:15"])
+        try validate("automations_update", ["automation": "id", "fire_at": "2030-05-05T22:15:00Z"])
+        try validate("automations_update", ["automation": "id", "recurrence": [2, 4, 6]])
+        XCTAssertThrowsError(try validate("automations_update", ["automation": "id", "recurrence": [0]]))
+    }
+
     func testTriggerKindsCannotBeMixed() throws {
         let input: [String: Value] = [
             "name": "Test", "scenes": ["scene"],
