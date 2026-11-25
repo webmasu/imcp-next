@@ -39,6 +39,7 @@
 		A40000000000000000000024 /* ../../Shared/Models/Service.swift in Sources */ = {isa = PBXBuildFile; fileRef = A40000000000000000000014 /* ../../Shared/Models/Service.swift */; };
 		A50000000000000000000020 /* MailTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A50000000000000000000010 /* MailTests.swift */; };
 		BC00000000000000000000B2 /* RecurrenceTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = BC00000000000000000000B1 /* RecurrenceTests.swift */; };
+		CA11000000000000000000B2 /* ForwardedToolTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = CA11000000000000000000B1 /* ForwardedToolTests.swift */; };
 		BC0000000000000000000072 /* WeatherHistoryTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = BC0000000000000000000071 /* WeatherHistoryTests.swift */; };
 		A50000000000000000000021 /* ../../App/Services/Mail.swift in Sources */ = {isa = PBXBuildFile; fileRef = A50000000000000000000011 /* ../../App/Services/Mail.swift */; };
 		BC00000000000000000000A2 /* ../../App/Extensions/EventKit+Extensions.swift in Sources */ = {isa = PBXBuildFile; fileRef = BC00000000000000000000A1 /* ../../App/Extensions/EventKit+Extensions.swift */; };
@@ -133,6 +134,7 @@
 		A40000000000000000000014 /* ../../Shared/Models/Service.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ../../Shared/Models/Service.swift; sourceTree = "<group>"; };
 		A50000000000000000000010 /* MailTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MailTests.swift; sourceTree = "<group>"; };
 		BC00000000000000000000B1 /* RecurrenceTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RecurrenceTests.swift; sourceTree = "<group>"; };
+		CA11000000000000000000B1 /* ForwardedToolTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ForwardedToolTests.swift; sourceTree = "<group>"; };
 		BC0000000000000000000071 /* WeatherHistoryTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WeatherHistoryTests.swift; sourceTree = "<group>"; };
 		A50000000000000000000011 /* ../../App/Services/Mail.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ../../App/Services/Mail.swift; sourceTree = "<group>"; };
 		BC00000000000000000000A1 /* ../../App/Extensions/EventKit+Extensions.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "../../App/Extensions/EventKit+Extensions.swift"; sourceTree = "<group>"; };
@@ -290,6 +292,7 @@
 				A40000000000000000000014 /* ../../Shared/Models/Service.swift */,
 				A50000000000000000000010 /* MailTests.swift */,
 				BC00000000000000000000B1 /* RecurrenceTests.swift */,
+				CA11000000000000000000B1 /* ForwardedToolTests.swift */,
 				BC0000000000000000000071 /* WeatherHistoryTests.swift */,
 				A50000000000000000000011 /* ../../App/Services/Mail.swift */,
 				BC00000000000000000000A1 /* ../../App/Extensions/EventKit+Extensions.swift */,
@@ -617,6 +620,7 @@
 				A40000000000000000000024 /* ../../Shared/Models/Service.swift in Sources */,
 				A50000000000000000000020 /* MailTests.swift in Sources */,
 				BC00000000000000000000B2 /* RecurrenceTests.swift in Sources */,
+				CA11000000000000000000B2 /* ForwardedToolTests.swift in Sources */,
 				BC0000000000000000000072 /* WeatherHistoryTests.swift in Sources */,
 				A50000000000000000000021 /* ../../App/Services/Mail.swift in Sources */,
 				BC00000000000000000000A2 /* ../../App/Extensions/EventKit+Extensions.swift in Sources */,

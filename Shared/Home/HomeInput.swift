@@ -1,9 +1,7 @@
-import JSONSchema
-
 /// Validates the schema features used by Home tools before any HomeKit mutation.
 enum HomeInput {
-    static func validate(_ input: [String: Value], schema: JSONSchema) throws {
-        try validate(.object(input), schema: Value(schema), path: "arguments")
+    static func validate(_ input: [String: Value], schema: Value) throws {
+        try validate(.object(input), schema: schema, path: "arguments")
     }
 
     private static func validate(_ value: Value, schema: Value, path: String) throws {

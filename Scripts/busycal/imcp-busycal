@@ -1,0 +1,107 @@
+#!/usr/bin/python3
+"""Run one MCP operation against the local, vendor-signed BusyCal bridge."""
+
+import json
+from pathlib import Path
+import signal
+import subprocess
+import sys
+
+
+PACKAGE = "BusyCalMCP-1.2.3"
+PROTOCOL = "2025-06-18"
+
+
+def timeout(signum, frame):
+    raise TimeoutError("BusyCal timed out. Check BusyCal before retrying a change.")
+
+
+def exchange(process, request_id, method, params):
+    request = {"jsonrpc": "2.0", "method": method, "params": params}
+    if request_id is not None:
+        request["id"] = request_id
+    process.stdin.write(json.dumps(request, ensure_ascii=False).encode() + b"\n")
+    process.stdin.flush()
+    if request_id is None:
+        return
+    for line in process.stdout:
+        reply = json.loads(line)
+        if reply.get("id") != request_id:
+            continue
+        if "error" in reply:
+            raise ValueError(reply["error"].get("message", "BusyCal returned an RPC error."))
+        return reply["result"]
+    raise RuntimeError("BusyCal closed the connection. Check BusyCal before retrying a change.")
+
+
+def run(executable, request):
+    process = subprocess.Popen([str(executable)], cwd=executable.parent, stdin=subprocess.PIPE,
+                               stdout=subprocess.PIPE, stderr=subprocess.DEVNULL)
+    try:
+        hello = exchange(process, 1, "initialize", {
+            "protocolVersion": PROTOCOL, "capabilities": {},
+            "clientInfo": {"name": "iMCP Next", "version": "1"},
+        })
+        if hello.get("protocolVersion") != PROTOCOL or "tools" not in hello.get("capabilities", {}):
+            raise ValueError("Incompatible BusyCal MCP server.")
+        exchange(process, None, "notifications/initialized", {})
+        if request is not None:
+            return exchange(process, 2, "tools/call", request)
+        definitions = []
+        cursors = set()
+        params = {}
+        while True:
+            page = exchange(process, 2 + len(cursors), "tools/list", params)
+            definitions.extend(page["tools"])
+            cursor = page.get("nextCursor")
+            if not cursor:
+                break
+            if cursor in cursors:
+                raise ValueError("BusyCal repeated its tool-list cursor.")
+            cursors.add(cursor)
+            params = {"cursor": cursor}
+        if not definitions or len({t["name"] for t in definitions}) != len(definitions):
+            raise ValueError("BusyCal returned an empty or ambiguous tool catalog.")
+        return definitions
+    finally:
+        # No automatic replay: a lost response can follow a committed calendar edit.
+        try:
+            process.stdin.close()
+        except BrokenPipeError:
+            pass
+        try:
+            process.wait(timeout=1)
+        except subprocess.TimeoutExpired:
+            process.kill()
+            process.wait()
+        process.stdout.close()
+
+
+def main():
+    catalog = sys.argv[1:] == ["--catalog"]
+    if not catalog and sys.argv[1:]:
+        raise ValueError("Unknown arguments.")
+    executable = Path(__file__).resolve().parent / PACKAGE / "dist" / "BusyCalMCPBridge"
+    signal.signal(signal.SIGALRM, timeout)
+    signal.alarm(60)
+    try:
+        if catalog:
+            result = run(executable, None)
+        else:
+            request = json.load(sys.stdin)
+            if not (isinstance(request, dict) and isinstance(request.get("name"), str)
+                    and isinstance(request.get("arguments"), dict)):
+                raise ValueError("Expected a BusyCal tool name and arguments.")
+            result = {"result": run(executable, request)}
+        print(json.dumps(result, ensure_ascii=False, separators=(",", ":")))
+    finally:
+        signal.alarm(0)
+
+
+if __name__ == "__main__":
+    try:
+        main()
+    except (OSError, ValueError, KeyError, RuntimeError, subprocess.SubprocessError) as error:
+        if sys.argv[1:]:
+            sys.exit(str(error))
+        print(json.dumps({"error": {"message": str(error)}}))

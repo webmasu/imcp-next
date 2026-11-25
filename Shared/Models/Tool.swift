@@ -6,9 +6,54 @@ import Ontology
 public struct Tool: Sendable {
     let name: String
     let description: String
-    let inputSchema: JSONSchema
     let annotations: MCP.Tool.Annotations
-    private let implementation: @Sendable ([String: Value]) async throws -> Value
+    private enum Implementation: Sendable {
+        case local(JSONSchema, @Sendable ([String: Value]) async throws -> Value)
+        case forwarded(MCP.Tool, @Sendable ([String: Value]) async throws -> CallTool.Result)
+    }
+
+    private let implementation: Implementation
+
+    var definition: MCP.Tool {
+        get throws {
+            switch implementation {
+            case .local(let schema, _):
+                return try MCP.Tool(
+                    name: name,
+                    description: description,
+                    inputSchema: Value(schema),
+                    annotations: annotations
+                )
+            case .forwarded(let tool, _):
+                return MCP.Tool(
+                    name: name,
+                    title: tool.title,
+                    description: tool.description,
+                    inputSchema: tool.inputSchema,
+                    annotations: tool.annotations,
+                    outputSchema: tool.outputSchema,
+                    icons: tool.icons,
+                    _meta: tool._meta
+                )
+            }
+        }
+    }
+
+    init(
+        forwarding upstream: MCP.Tool,
+        prefix: String,
+        call: @escaping @Sendable ([String: Value]) async throws -> CallTool.Result
+    ) {
+        name = prefix + upstream.name
+        description = upstream.description ?? upstream.title ?? upstream.name
+        annotations = upstream.annotations
+        implementation = .forwarded(upstream, call)
+    }
+
+    func forwardedResult(_ input: [String: Value]) async throws -> CallTool.Result? {
+        guard case .forwarded(_, let call) = implementation else { return nil }
+        return try await call(input)
+    }
 
     public init<T: Encodable>(
         name: String,
@@ -19,9 +64,8 @@ public struct Tool: Sendable {
     ) {
         self.name = name
         self.description = description
-        self.inputSchema = inputSchema
         self.annotations = annotations
-        self.implementation = { input in
+        self.implementation = .local(inputSchema) { input in
             let result = try await implementation(input)
 
             let encoder = JSONEncoder()
@@ -38,7 +82,10 @@ public struct Tool: Sendable {
     }
 
     public func callAsFunction(_ input: [String: Value]) async throws -> Value {
-        try await implementation(input)
+        switch implementation {
+        case .local(_, let call): return try await call(input)
+        case .forwarded(_, let call): return try await Value(call(input))
+        }
     }
 }
 

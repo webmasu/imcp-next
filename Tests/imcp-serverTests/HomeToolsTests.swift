@@ -107,7 +107,7 @@ final class HomeToolsTests: XCTestCase {
 
     private func validate(_ name: String, _ input: [String: Value]) throws {
         let tool = try XCTUnwrap(HomeTools.tools(backend: backend).first { $0.name == name })
-        try HomeInput.validate(input, schema: tool.inputSchema)
+        try HomeInput.validate(input, schema: tool.definition.inputSchema)
     }
 }
 

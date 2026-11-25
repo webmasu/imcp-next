@@ -6,6 +6,8 @@ struct ServiceSettingsView: View {
     @ObservedObject var serverController: ServerController
     let config: ServiceConfig
 
+    @AppStorage(BusyCalService.writesKey) private var busyCalAllowChanges = false
+
     var body: some View {
         let isOn = config.binding.wrappedValue
 
@@ -26,6 +28,22 @@ struct ServiceSettingsView: View {
                         .toggleStyle(.switch)
                         .controlSize(.regular)
                         .labelsHidden()
+                }
+            }
+
+            if let busyCal = config.service as? BusyCalService {
+                Section {
+                    if busyCal.isInstalled {
+                        Toggle("Allow Changes in BusyCal", isOn: $busyCalAllowChanges)
+                            .disabled(!isOn)
+                            .onChange(of: busyCalAllowChanges) { _, _ in
+                                Task { await serverController.updateServiceBindings() }
+                            }
+                    } else {
+                        Text(
+                            "Install BusyMac’s official bridge by running Scripts/install-busycal.sh from the iMCP Next checkout."
+                        )
+                    }
                 }
             }
 

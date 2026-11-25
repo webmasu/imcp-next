@@ -50,6 +50,7 @@ struct ServiceConfig: Identifiable {
 enum ServiceRegistry {
     static let services: [any Service] = {
         var services: [any Service] = [
+            BusyCalService.shared,
             BusyContactsService.shared,
             CalendarService.shared,
             CaptureService.shared,
@@ -77,6 +78,7 @@ enum ServiceRegistry {
     }()
 
     static func configureServices(
+        busyCalEnabled: Binding<Bool>,
         busyContactsEnabled: Binding<Bool>,
         calendarEnabled: Binding<Bool>,
         captureEnabled: Binding<Bool>,
@@ -97,6 +99,14 @@ enum ServiceRegistry {
         weatherEnabled: Binding<Bool>
     ) -> [ServiceConfig] {
         var configs: [ServiceConfig] = [
+            ServiceConfig(
+                name: "BusyCal",
+                summary: "Use BusyCal’s calendars, events, tasks and availability through its official MCP bridge.",
+                iconName: "calendar.badge.clock",
+                color: .red,
+                service: BusyCalService.shared,
+                binding: busyCalEnabled
+            ),
             ServiceConfig(
                 name: "BusyContacts",
                 summary:
@@ -261,6 +271,7 @@ final class ServerController: ObservableObject {
     private let networkManager = ServerNetworkManager()
 
     // MARK: - AppStorage for Service Enablement States
+    @AppStorage("busyCalEnabled") private var busyCalEnabled = false
     @AppStorage("busyContactsEnabled") private var busyContactsEnabled = false
     @AppStorage("calendarEnabled") private var calendarEnabled = false
     @AppStorage("captureEnabled") private var captureEnabled = false
@@ -293,6 +304,7 @@ final class ServerController: ObservableObject {
     // MARK: - Computed Properties for Service Configurations and Bindings
     var computedServiceConfigs: [ServiceConfig] {
         ServiceRegistry.configureServices(
+            busyCalEnabled: $busyCalEnabled,
             busyContactsEnabled: $busyContactsEnabled,
             calendarEnabled: $calendarEnabled,
             captureEnabled: $captureEnabled,
@@ -814,7 +826,7 @@ actor MCPConnectionManager {
             version: Bundle.main.shortVersionString ?? "unknown",
             instructions: """
                 Use iMCP for apps and data on the user's Mac: \
-                Calendar, Contacts, HomeKit, Location, Mail, Maps, Messages, Music, Notes, Phone, Reminders, Shortcuts, Voice Memos, Voicemail, Weather, \
+                BusyCal, Calendar, Contacts, HomeKit, Location, Mail, Maps, Messages, Music, Notes, Phone, Reminders, Shortcuts, Voice Memos, Voicemail, Weather, \
                 and the camera, microphone, and screen. \
                 Only the services that the user turns on in iMCP have tools.
                 """,
@@ -1352,14 +1364,7 @@ actor ServerNetworkManager {
                                 continue
                             }
                             log.debug("Adding tool: \(tool.name)")
-                            tools.append(
-                                .init(
-                                    name: tool.name,
-                                    description: tool.description,
-                                    inputSchema: try Value(tool.inputSchema),
-                                    annotations: tool.annotations
-                                )
-                            )
+                            tools.append(try tool.definition)
                         }
                     }
                 }
@@ -1415,14 +1420,10 @@ actor ServerNetworkManager {
                     isServiceEnabled
                 {
                     do {
-                        guard
-                            let value = try await service.call(
-                                tool: params.name,
-                                with: params.arguments ?? [:]
-                            )
-                        else {
-                            continue
-                        }
+                        guard let tool = service.tools.first(where: { $0.name == params.name }) else { continue }
+                        let arguments = params.arguments ?? [:]
+                        if let result = try await tool.forwardedResult(arguments) { return result }
+                        let value = try await tool(arguments)
 
                         log.notice("Tool \(params.name) executed successfully for \(connectionID)")
                         switch value {

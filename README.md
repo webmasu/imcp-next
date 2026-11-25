@@ -18,6 +18,13 @@ and a [growing list of clients][mcp-clients] that support the
     <th width="48">
       <img src="Assets/calendar.svg" width="48" height="48" alt="" role="presentation"/>
     </th>
+    <td><strong>BusyCal</strong></td>
+    <td>Read BusyCal calendars, events, tasks and availability. Optionally enable changes through <a href="#busycal">BusyMac’s official MCP bridge</a>.</td>
+  </tr>
+  <tr>
+    <th width="48">
+      <img src="Assets/calendar.svg" width="48" height="48" alt="" role="presentation"/>
+    </th>
     <td><strong>Calendar</strong></td>
     <td>View and manage calendar events, including creating new events with customizable settings like recurrence, alarms, and availability status.</td>
   </tr>
@@ -680,6 +687,22 @@ In **Settings > Messages**, select a connection, click **Test Connection**, then
 | `messages_send` | `send` | Send text to one recipient or existing chat. Enable **Send Text** separately under Messages. |
 
 Clients using upstream's `messages_fetch` should use the history and search tools above. Results follow the imsg JSON format. Attachment contents stay on the Mac running imsg. A send that loses its SSH connection can have reached Messages. Check the chat history before retrying.
+
+### BusyCal
+
+Run `Scripts/install-busycal.sh` on the Mac that runs BusyCal, then enable **BusyCal**
+in iMCP Next settings. The installer downloads BusyMac’s official MCP bundle 1.2.3,
+verifies the release checksum and developer signature, and installs it locally. It
+requires BusyCal 2026.3.2 or later. For an offline install, pass the downloaded
+`.mcpb` file as the script’s only argument.
+
+The existing iMCP connection advertises the vendor’s tools with a `busycal_`
+prefix. Start with `busycal_list_calendars`. Calendar and task searches,
+availability, and selected items are available by default. Turn on **Allow Changes
+in BusyCal** to expose creation, updates, moves and deletion. Individual tools
+can also be switched off. Clients with a tool allowlist need the corresponding
+prefixed names. BusyCal remains responsible for calendar permissions and syncing.
+[BusyMac’s MCP guide](https://www.busymac.com/docs/busycal/70624-mcp/) · [Vendor release and license](https://github.com/BeehiveInnovations/busycal-mcpb)
 
 ### BusyContacts
 

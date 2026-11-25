@@ -247,23 +247,14 @@ actor HelperServer {
     private func serveTools(on server: MCP.Server) async {
         let tools = HomeKitService(backend: backend).tools
         await server.withMethodHandler(ListTools.self) { _ in
-            try ListTools.Result(
-                tools: tools.map { tool in
-                    MCP.Tool(
-                        name: tool.name,
-                        description: tool.description,
-                        inputSchema: try Value(tool.inputSchema),
-                        annotations: tool.annotations
-                    )
-                }
-            )
+            try ListTools.Result(tools: tools.map { try $0.definition })
         }
         await server.withMethodHandler(CallTool.self) { params in
             do {
                 guard let tool = tools.first(where: { $0.name == params.name }) else {
                     throw HomeError("Unknown Home tool: \(params.name)")
                 }
-                try HomeInput.validate(params.arguments ?? [:], schema: tool.inputSchema)
+                try HomeInput.validate(params.arguments ?? [:], schema: tool.definition.inputSchema)
                 let value = try await tool.callAsFunction(params.arguments ?? [:])
                 let encoder = JSONEncoder()
                 encoder.userInfo[Ontology.DateTime.timeZoneOverrideKey] = TimeZone.current
