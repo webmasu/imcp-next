@@ -15,6 +15,8 @@ final class HomeProxyTests: XCTestCase {
                 "Set IMCP_HELPER_PATH and IMCP_HELPER_CODE (the code in the helper's window) to run the signed helper integration test."
             )
         }
+        // The unhosted XCTest runner needs an AppKit application to hand focus to the helper.
+        _ = NSApplication.shared
         let backend = HomeService(
             helperURL: URL(fileURLWithPath: path),
             keyStore: MemoryKeyStore(),
